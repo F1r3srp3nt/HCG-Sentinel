@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -15,6 +16,7 @@ jobs:
   core-linux:
     name: SentinelCore tests (Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
@@ -31,6 +33,7 @@ jobs:
   app-macos:
     name: App build and tests (Xcode)
     runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
@@ -70,12 +73,15 @@ jobs:
           print("IPAD_UDID=" + pick("iPad"))
           PY
       - name: Unit tests on iPhone simulator
+        timeout-minutes: 20
         run: |
           xcodebuild test -project HCGSentinel.xcodeproj -scheme HCGSentinel \
             -destination "platform=iOS Simulator,id=$IPHONE_UDID" \
             CODE_SIGNING_ALLOWED=NO -quiet
       - name: Launch on iPhone and iPad simulators and capture screenshots
+        timeout-minutes: 15
         run: |
+          set -x
           xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim \
             CODE_SIGNING_ALLOWED=NO -quiet

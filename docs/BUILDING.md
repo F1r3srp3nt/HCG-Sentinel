@@ -103,7 +103,7 @@ deliberately not scripted anywhere in this repository.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push:
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`, with time limits on each job:
 
 * **Linux:** `swift test` for `SentinelCore` (uses the portable SHA-256 path).
 * **macOS:** `swift test` (CryptoKit path), an unsigned Release build for a generic iOS device, the full scheme's
