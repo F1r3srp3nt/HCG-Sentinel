@@ -1,7 +1,9 @@
 name: Archive check
 
-# Archives the app for a generic iOS device with every Xcode installed on the runner images, using the same
-# command shape HCG Executable Maker uses. Unsigned: CI holds no signing identity.
+# Archives the app for a generic iOS device with explicitly selected Xcode versions, using the same command shape
+# as HCG Executable Maker (xcodebuild -project … -scheme HCGSentinel -configuration Release
+# -destination generic/platform=iOS -archivePath … archive). Unsigned: CI holds no signing identity, so no IPA
+# is exported here. Full logs and result bundles are kept as artifacts, also on failure.
 
 on:
   push:
@@ -17,56 +19,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  discover:
-    name: List installed Xcode versions
-    strategy:
-      matrix:
-        runner: [macos-15, macos-26]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 5
-    steps:
-      - name: Installed Xcodes
-        run: |
-          ls -d /Applications/Xcode*.app | while read -r app; do
-            real="$(cd "$app" && pwd -P)"
-            echo "$app -> $real : $(DEVELOPER_DIR="$real/Contents/Developer" xcodebuild -version | tr '\n' ' ')"
-          done
-          echo "default: $(xcode-select -p)"
-
   archive:
-    name: Archive (${{ matrix.runner }}, Xcode ${{ matrix.xcode }})
+    name: ${{ matrix.flavor }} · Xcode ${{ matrix.xcode }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-15, xcode: "16.4" }
-          - { runner: macos-15, xcode: "26.0" }
-          - { runner: macos-26, xcode: "26.2" }
-          - { runner: macos-26, xcode: "default" }
+          - { runner: macos-15, xcode: "16.4", flavor: legacy }
+          - { runner: macos-26, xcode: "26.6", flavor: legacy }
+          - { runner: macos-26, xcode: "26.6", flavor: modern }
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
-      BUILD_DIR: ${{ github.workspace }}/build dir with spaces
+      FLAVOR: ${{ matrix.flavor }}
+      # A path with spaces, on purpose.
+      BUILD_DIR: ${{ github.workspace }}/build output
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode
+      - name: Select Xcode ${{ matrix.xcode }}
         run: |
-          if [ "${{ matrix.xcode }}" != "default" ]; then
-            app="/Applications/Xcode_${{ matrix.xcode }}.app"
-            [ -d "$app" ] || { echo "Xcode ${{ matrix.xcode }} is not installed on this image:"; ls -d /Applications/Xcode*.app; exit 1; }
-            echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+          app="/Applications/Xcode_${{ matrix.xcode }}.app"
+          if [ ! -d "$app" ]; then
+            echo "Xcode ${{ matrix.xcode }} is not installed on this runner image. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
           fi
-      - name: Toolchain and effective settings
+          echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+      - name: Project file matches its generator
+        run: |
+          python3 Tools/generate_xcodeproj.py
+          git diff --exit-code -- HCGSentinel.xcodeproj
+      - name: Toolchain, effective settings and supported deployment range
         run: Tools/build.sh info
-      - name: Archive (unsigned, generic iOS device)
+      - name: Simulator build (unsigned)
+        run: Tools/build.sh simulator
+      - name: Archive for a generic iOS device (unsigned)
         run: Tools/build.sh archive
-      - name: Inspect archived app
+      - name: Inspect the archived app
         run: Tools/build.sh inspect
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: archive-logs-${{ matrix.runner }}-xcode-${{ matrix.xcode }}
+          name: archive-${{ matrix.flavor }}-xcode-${{ matrix.xcode }}
           path: |
-            build dir with spaces/logs
-            build dir with spaces/*.xcresult
+            build output/logs
+            build output/*.xcresult
           if-no-files-found: warn

@@ -1,7 +1,7 @@
 #!/bin/bash
 # HCG Sentinel build entry point. Works from a clean clone and from paths containing spaces.
 #
-#   Tools/build.sh info        Print toolchain and effective build settings.
+#   Tools/build.sh info        Print toolchain, effective build settings and this Xcode's supported deployment range.
 #   Tools/build.sh test-core   Run the SentinelCore tests on this Mac (no simulator).
 #   Tools/build.sh simulator   Build the app for the iOS Simulator (unsigned).
 #   Tools/build.sh archive     Archive for a generic iOS device.
@@ -13,6 +13,10 @@
 #   DEVELOPMENT_TEAM   Apple team ID. When set, archive is signed (automatic signing). When unset, the archive
 #                      is UNSIGNED: good for checking the build, not installable, not exportable.
 #   BUNDLE_ID          Optional bundle identifier override for signing with your own team.
+#   FLAVOR             "legacy" (default): iOS 14.7 and later, configuration Release.
+#                      "modern": iOS 15.0 and later, configuration ReleaseModern. Will not install on iOS 14.
+#   IOS_DEPLOYMENT_TARGET  Optional explicit minimum iOS for this build only (e.g. 16.0). Use it only when the
+#                      selected Xcode rejects the flavor's target; the result is reported by 'inspect'.
 #   BUILD_DIR          Output directory (default: <repo>/build).
 #
 # Nothing here uploads anything, and a failed step always exits non-zero.
@@ -26,6 +30,27 @@ ARCHIVE="$BUILD_DIR/HCGSentinel.xcarchive"
 LOGS="$BUILD_DIR/logs"
 mkdir -p "$LOGS"
 
+FLAVOR="${FLAVOR:-legacy}"
+case "$FLAVOR" in
+  legacy) RELEASE_CONFIG="Release"; DEBUG_CONFIG="Debug" ;;
+  modern) RELEASE_CONFIG="ReleaseModern"; DEBUG_CONFIG="DebugModern" ;;
+  *) echo "FLAVOR must be 'legacy' or 'modern', not '$FLAVOR'."; exit 2 ;;
+esac
+
+target_args() {
+  if [ -n "${IOS_DEPLOYMENT_TARGET:-}" ]; then printf '%s\n' "IPHONEOS_DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET"; fi
+}
+
+# Asks the selected Xcode which deployment targets it accepts, by planning (not running) a build with a
+# deliberately ancient target and reading its diagnostic.
+supported_range() {
+  xcodebuild build -dry-run -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
+    -destination 'generic/platform=iOS' -derivedDataPath "$BUILD_DIR/DerivedData-probe" \
+    CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=8.0 2>&1 \
+    | grep -E "(error|warning): The iOS deployment target" | sed -E 's/^.*(error|warning): /\1: /' | sort -u | head -n 3
+  rm -rf "$BUILD_DIR/DerivedData-probe"
+}
+
 signing_args() {
   if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
     printf '%s\n' "CODE_SIGN_STYLE=Automatic" "DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM" "-allowProvisioningUpdates"
@@ -33,6 +58,7 @@ signing_args() {
   else
     printf '%s\n' "CODE_SIGNING_ALLOWED=NO" "CODE_SIGNING_REQUIRED=NO" "CODE_SIGN_IDENTITY="
   fi
+  target_args
 }
 
 # Runs xcodebuild, keeps the complete log, and lists every error line on failure.
@@ -63,11 +89,15 @@ cmd_info() {
   echo "iOS SDK: $(xcrun --sdk iphoneos --show-sdk-version) at $(xcrun --sdk iphoneos --show-sdk-path)"
   echo "Project: $PROJECT"
   xcodebuild -list -project "$PROJECT" 2>/dev/null | sed -n '/Targets:/,$p'
-  echo "Effective settings (scheme $SCHEME, Release, generic iOS device):"
-  xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release -destination 'generic/platform=iOS' \
+  echo "Flavor: $FLAVOR (configuration $RELEASE_CONFIG)${IOS_DEPLOYMENT_TARGET:+, IOS_DEPLOYMENT_TARGET override $IOS_DEPLOYMENT_TARGET}"
+  echo "Effective settings (scheme $SCHEME, $RELEASE_CONFIG, generic iOS device):"
+  xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration "$RELEASE_CONFIG" -destination 'generic/platform=iOS' \
     -showBuildSettings 2>/dev/null \
     | grep -E "^ +(IPHONEOS_DEPLOYMENT_TARGET|RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET|SDK_VERSION|ARCHS|TARGETED_DEVICE_FAMILY|PRODUCT_BUNDLE_IDENTIFIER|INFOPLIST_FILE|SWIFT_VERSION|CODE_SIGN_STYLE|DEVELOPMENT_TEAM|MARKETING_VERSION|CURRENT_PROJECT_VERSION) = " \
     || echo "  (could not read build settings)"
+  echo "What this Xcode says about a deployment target of 8.0 (shows its supported range):"
+  local range; range="$(supported_range)"
+  if [ -n "$range" ]; then echo "$range" | cut -c1-300 | sed 's/^/  /'; else echo "  (no deployment-target diagnostic was produced)"; fi
   echo "SentinelCore package platforms: $(grep -E 'platforms:' "$ROOT/SentinelCore/Package.swift" | sed 's/^ *//')"
 }
 
@@ -76,16 +106,18 @@ cmd_test_core() {
 }
 
 cmd_simulator() {
-  run_xcodebuild simulator build -project "$PROJECT" -scheme "$SCHEME" -configuration Debug \
+  local extra=()
+  while IFS= read -r line; do extra+=("$line"); done < <(target_args)
+  run_xcodebuild simulator build -project "$PROJECT" -scheme "$SCHEME" -configuration "$DEBUG_CONFIG" \
     -derivedDataPath "$BUILD_DIR/DerivedData" -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-    CODE_SIGNING_ALLOWED=NO
+    CODE_SIGNING_ALLOWED=NO ${extra[@]+"${extra[@]}"}
 }
 
 cmd_archive() {
   local extra=()
   while IFS= read -r line; do extra+=("$line"); done < <(signing_args)
   rm -rf "$ARCHIVE"
-  run_xcodebuild archive archive -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
+  run_xcodebuild archive archive -project "$PROJECT" -scheme "$SCHEME" -configuration "$RELEASE_CONFIG" \
     -derivedDataPath "$BUILD_DIR/DerivedData" -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" \
     "${extra[@]}"
   if [ -n "${DEVELOPMENT_TEAM:-}" ]; then

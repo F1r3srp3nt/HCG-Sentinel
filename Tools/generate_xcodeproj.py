@@ -15,7 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT = "HCGSentinel"
 APP_DIR, TEST_DIR, PACKAGE = "HCGSentinel", "HCGSentinelTests", "SentinelCore"
+# Legacy route (default): runs on the iPhone X with iOS 14.7 and on everything newer.
 DEPLOYMENT_TARGET = "14.7"
+# Modern route: for an Xcode whose supported deployment range starts above 14.7. Does NOT run on iOS 14.
+MODERN_DEPLOYMENT_TARGET = "15.0"
 BUNDLE_ID = "com.hcg.sentinel"
 
 
@@ -80,9 +83,13 @@ def build_file(ref, path, phase):
     return add(f"build:{phase}:{path.relative_to(ROOT).as_posix()}", "PBXBuildFile", fileRef=ref)
 
 
-def configurations(key, debug, release):
+def configurations(key, debug, release, modern=None):
+    """Debug and Release, plus DebugModern and ReleaseModern: identical except for `modern` overrides."""
+    modern = modern or {}
     ids = [add(f"config:{key}:Debug", "XCBuildConfiguration", buildSettings=debug, name="Debug"),
-           add(f"config:{key}:Release", "XCBuildConfiguration", buildSettings=release, name="Release")]
+           add(f"config:{key}:DebugModern", "XCBuildConfiguration", buildSettings={**debug, **modern}, name="DebugModern"),
+           add(f"config:{key}:Release", "XCBuildConfiguration", buildSettings=release, name="Release"),
+           add(f"config:{key}:ReleaseModern", "XCBuildConfiguration", buildSettings={**release, **modern}, name="ReleaseModern")]
     return add(f"configlist:{key}", "XCConfigurationList", buildConfigurations=ids,
                defaultConfigurationIsVisible=0, defaultConfigurationName="Release")
 
@@ -142,7 +149,8 @@ def main():
          "GCC_OPTIMIZATION_LEVEL": 0, "GCC_PREPROCESSOR_DEFINITIONS": ["DEBUG=1", "$(inherited)"],
          "ONLY_ACTIVE_ARCH": "YES", "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG", "SWIFT_OPTIMIZATION_LEVEL": "-Onone"},
         {**common, "DEBUG_INFORMATION_FORMAT": "dwarf-with-dsym", "ENABLE_NS_ASSERTIONS": "NO",
-         "SWIFT_COMPILATION_MODE": "wholemodule", "SWIFT_OPTIMIZATION_LEVEL": "-O", "VALIDATE_PRODUCT": "YES"})
+         "SWIFT_COMPILATION_MODE": "wholemodule", "SWIFT_OPTIMIZATION_LEVEL": "-O", "VALIDATE_PRODUCT": "YES"},
+        modern={"IPHONEOS_DEPLOYMENT_TARGET": MODERN_DEPLOYMENT_TARGET})
 
     app_settings = {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
