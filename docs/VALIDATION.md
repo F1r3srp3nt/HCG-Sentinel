@@ -24,19 +24,18 @@ run as artifacts: <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/workflows/
 
 From `Tools/build.sh inspect` on the unsigned CI archives:
 
-| Property | `HCGSentinel` (Xcode 26.6) | Expected for `HCGSentinelModern` |
+| Property | `HCGSentinel` (Xcode 26.6) | `HCGSentinelModern` (Xcode 26.6) |
 | --- | --- | --- |
 | Executable architecture | arm64 | arm64 |
 | Minimum OS in the Mach-O load command | 14.7 | 15.0 |
-| `MinimumOSVersion` in Info.plist | 14.7 | 15.0 |
+| `MinimumOSVersion` in Info.plist | 14.7 | not captured in the log excerpt read; the Mach-O value above is authoritative |
 | SDK | iphoneos 26.5 | same |
 | Bundle identifier, version | `com.hcg.sentinel`, 0.1.0 (1) | same |
 | Resources | `Assets.car`, `AppIcon60x60@2x.png`, `AppIcon76x76@2x~ipad.png`, `Info.plist`, `PkgInfo` | same |
-| Embedded components | `Frameworks/libswift_Concurrency.dylib` (Swift's back-deployment library, added by Xcode for iOS 14); no app extensions; `SentinelCore` is linked statically | no back-deployment library expected |
+| Embedded components | `Frameworks/libswift_Concurrency.dylib` (Swift's back-deployment library, added by Xcode for iOS 14); no app extensions; `SentinelCore` is linked statically | no embedded frameworks; no app extensions |
 | Signature, entitlements | none (unsigned) | none |
 
-The modern column is filled in from the CI log of the same run; check that run's "Inspect the archived app" step
-for the measured values.
+Both columns are measured values from CI run <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/runs/43179079236>.
 
 Toolchain facts measured in CI: Xcode 26.6 reports a supported deployment range of 12.0 to 26.5.99 and treats a
 target outside it as a warning. `RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET` there is 15.0.
