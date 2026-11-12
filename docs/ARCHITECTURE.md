@@ -11,7 +11,7 @@ explicitly permitted to test.
 | `HCGSentinel/` | The app: SwiftUI screens, per-tool observable models and iOS platform adapters. |
 | `SentinelCore/` | Local Swift package with all logic that needs no UIKit, SwiftUI, Core Bluetooth or Network.framework. Builds and tests on macOS and Linux. |
 | `HCGSentinelTests/` | App-level state tests that run inside the app on a simulator. |
-| `Tools/` | Local test service, mock radio node, synthetic capture generator, project and icon generators. |
+| `Tools/` | Local test service, mock radio node, synthetic capture generator, project generator. |
 | `Helper/` | Packaging notes for the optional privileged helper. No helper code or binary exists. |
 | `docs/` | Build, test, protocol and integration documentation. |
 
