@@ -29,7 +29,8 @@ declares itself simulated is provided for development.
 open HCGSentinel.xcodeproj
 ```
 
-Choose the **HCGSentinel** scheme and a simulator, then Run. To test the core logic without Xcode:
+Choose the **HCGSentinel** scheme and a simulator, then Run. From the command line, `Tools/build.sh` is the single
+entry point (`info`, `range`, `simulator`, `archive`, `inspect`, `export`). To test the core logic without Xcode:
 
 ```bash
 swift test --package-path SentinelCore
@@ -39,6 +40,7 @@ swift test --package-path SentinelCore
 
 | Document | Contents |
 | --- | --- |
+| [docs/MAKER.md](docs/MAKER.md) | Building with HCG Executable Maker, the archive failure, and the two schemes. |
 | [docs/BUILDING.md](docs/BUILDING.md) | Requirements, simulator and device builds, manual signing, IPA export, CI. |
 | [docs/TESTING.md](docs/TESTING.md) | Automated tests, local test service, simulator and physical-device checklists. |
 | [docs/VALIDATION.md](docs/VALIDATION.md) | What has actually been compiled, simulator-tested and device-tested. |
