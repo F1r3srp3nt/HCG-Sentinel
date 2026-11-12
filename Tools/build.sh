@@ -1,7 +1,8 @@
 #!/bin/bash
 # HCG Sentinel build entry point. Works from a clean clone and from paths containing spaces.
 #
-#   Tools/build.sh info        Print toolchain, effective build settings and this Xcode's supported deployment range.
+#   Tools/build.sh info        Print toolchain and effective build settings.
+#   Tools/build.sh range       Ask the selected Xcode which iOS deployment targets it supports.
 #   Tools/build.sh test-core   Run the SentinelCore tests on this Mac (no simulator).
 #   Tools/build.sh simulator   Build the app for the iOS Simulator (unsigned).
 #   Tools/build.sh archive     Archive for a generic iOS device.
@@ -41,14 +42,24 @@ target_args() {
   if [ -n "${IOS_DEPLOYMENT_TARGET:-}" ]; then printf '%s\n' "IPHONEOS_DEPLOYMENT_TARGET=$IOS_DEPLOYMENT_TARGET"; fi
 }
 
-# Asks the selected Xcode which deployment targets it accepts, by planning (not running) a build with a
-# deliberately ancient target and reading its diagnostic.
+# Asks the selected Xcode which deployment targets it accepts: starts a throwaway build with a deliberately
+# ancient target (iOS 8.0), waits for Xcode's own diagnostic about the supported range, then stops the build.
+# The diagnostic's severity (warning or error) is printed as Xcode gave it.
 supported_range() {
-  xcodebuild build -dry-run -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
-    -destination 'generic/platform=iOS' -derivedDataPath "$BUILD_DIR/DerivedData-probe" \
-    CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=8.0 2>&1 \
-    | grep -E "(error|warning): The iOS deployment target" | sed -E 's/^.*(error|warning): /\1: /' | sort -u | head -n 3
-  rm -rf "$BUILD_DIR/DerivedData-probe"
+  local probe="$BUILD_DIR/range-probe" log="$LOGS/range-probe.log" waited=0 pid
+  rm -rf "$probe"
+  xcodebuild build -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
+    -destination 'generic/platform=iOS' -derivedDataPath "$probe" \
+    CODE_SIGNING_ALLOWED=NO IPHONEOS_DEPLOYMENT_TARGET=8.0 > "$log" 2>&1 &
+  pid=$!
+  while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 180 ]; do
+    if grep -q "deployment target" "$log" 2>/dev/null; then break; fi
+    sleep 3; waited=$((waited + 3))
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  grep -E "(error|warning): .*deployment target" "$log" | sed -E 's/^.*(error|warning): /\1: /' | sort -u | head -n 4
+  rm -rf "$probe"
 }
 
 signing_args() {
@@ -95,10 +106,14 @@ cmd_info() {
     -showBuildSettings 2>/dev/null \
     | grep -E "^ +(IPHONEOS_DEPLOYMENT_TARGET|RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET|SDK_VERSION|ARCHS|TARGETED_DEVICE_FAMILY|PRODUCT_BUNDLE_IDENTIFIER|INFOPLIST_FILE|SWIFT_VERSION|CODE_SIGN_STYLE|DEVELOPMENT_TEAM|MARKETING_VERSION|CURRENT_PROJECT_VERSION) = " \
     || echo "  (could not read build settings)"
-  echo "What this Xcode says about a deployment target of 8.0 (shows its supported range):"
-  local range; range="$(supported_range)"
-  if [ -n "$range" ]; then echo "$range" | cut -c1-300 | sed 's/^/  /'; else echo "  (no deployment-target diagnostic was produced)"; fi
   echo "SentinelCore package platforms: $(grep -E 'platforms:' "$ROOT/SentinelCore/Package.swift" | sed 's/^ *//')"
+}
+
+cmd_range() {
+  echo "Xcode $(xcodebuild -version | head -n 1 | sed 's/Xcode //'), when asked to build for iOS 8.0, reports:"
+  local range; range="$(supported_range)"
+  if [ -n "$range" ]; then echo "$range" | cut -c1-400 | sed 's/^/  /'
+  else echo "  no deployment-target diagnostic (see $LOGS/range-probe.log)"; tail -n 5 "$LOGS/range-probe.log" | cut -c1-300 | sed 's/^/  | /'; fi
 }
 
 cmd_test_core() {
@@ -165,10 +180,11 @@ cmd_export() {
 
 case "${1:-}" in
   info) cmd_info ;;
+  range) cmd_range ;;
   test-core) cmd_test_core ;;
   simulator) cmd_simulator ;;
   archive) cmd_archive ;;
   inspect) cmd_inspect ;;
   export) cmd_export ;;
-  *) sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

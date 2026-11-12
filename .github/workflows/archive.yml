@@ -49,8 +49,10 @@ jobs:
         run: |
           python3 Tools/generate_xcodeproj.py
           git diff --exit-code -- HCGSentinel.xcodeproj
-      - name: Toolchain, effective settings and supported deployment range
+      - name: Toolchain and effective settings
         run: Tools/build.sh info
+      - name: Deployment targets this Xcode supports
+        run: Tools/build.sh range
       - name: Simulator build (unsigned)
         run: Tools/build.sh simulator
       - name: Archive for a generic iOS device (unsigned)
