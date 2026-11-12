@@ -70,7 +70,42 @@ The simulator has no Bluetooth radio and no document provider with your files, s
 
 Run the same list on each device, plus the device-only items below. Record results in `docs/VALIDATION.md`.
 
-### iPhone 13 Pro Max (iOS 17.4) and iPhone X (iOS 14.7)
+### Which build goes on which phone
+
+| Phone | Build to install | Notes |
+| --- | --- | --- |
+| iPhone X, iOS 14.7 | Scheme `HCGSentinel` only | `HCGSentinelModern` (iOS 15+) will be refused by the phone. Recent Xcode versions may not attach a debugger to iOS 14; install the IPA instead (see `docs/BUILDING.md`). |
+| iPhone 13 Pro Max, iOS 17.4 | Either scheme | Enable Developer Mode first (Settings › Privacy & Security › Developer Mode). |
+
+Before installing, confirm what you built:
+
+```bash
+Tools/build.sh inspect
+```
+
+It must show `minos 14.7` for the iPhone X. Both phones' UDIDs must be in the development provisioning profile.
+
+### iPhone X (iOS 14.7) — do these first
+
+This is the configuration that has never been executed anywhere, so start here.
+
+1. The app installs and launches to the Dashboard (a launch crash here would point at an API newer than iOS 14).
+2. Tab bar and navigation bars are opaque obsidian; text is readable on the 5.8-inch screen at the default and the
+   largest non-accessibility text size, on Dashboard, Capabilities and Settings.
+3. Each tab opens. From the Dashboard, the gear opens Settings as a sheet and the capability card opens
+   Capabilities as a sheet; both close with Done.
+4. Network Inspector › import a capture › tap a packet: the detail screen pushes and the back button returns.
+5. Request Composer: the body editor has a dark background (not white); Review request… opens and Cancel closes it.
+6. Then run the common checklist below.
+
+### iPhone 13 Pro Max (iOS 17.4)
+
+1. Developer Mode is on; the app installs and launches.
+2. Run the common checklist below.
+3. If you built both variants, install `HCGSentinelModern` over `HCGSentinel` once: it is the same app (same bundle
+   identifier), so settings and saved captures must still be there.
+
+### Common checklist (both phones)
 
 1. First launch: **no permission prompt appears**.
 2. Bluetooth Explorer › enable scanning in Settings › Start scanning: iOS asks for Bluetooth permission once.

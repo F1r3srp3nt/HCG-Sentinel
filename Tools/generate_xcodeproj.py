@@ -15,7 +15,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT = "HCGSentinel"
 APP_DIR, TEST_DIR, PACKAGE = "HCGSentinel", "HCGSentinelTests", "SentinelCore"
+# Legacy route (default): runs on the iPhone X with iOS 14.7 and on everything newer.
 DEPLOYMENT_TARGET = "14.7"
+# Modern route: for an Xcode whose supported deployment range starts above 14.7. Does NOT run on iOS 14.
+MODERN_DEPLOYMENT_TARGET = "15.0"
+MODERN = f"{PROJECT}Modern"
 BUNDLE_ID = "com.hcg.sentinel"
 
 
@@ -99,7 +103,10 @@ def main():
                       includeInIndex=0, path=f"{PROJECT}.app", sourceTree="BUILT_PRODUCTS_DIR")
     test_product = add("product:tests", "PBXFileReference", explicitFileType="wrapper.cfbundle",
                        includeInIndex=0, path=f"{PROJECT}Tests.xctest", sourceTree="BUILT_PRODUCTS_DIR")
-    products_group = add("group:Products", "PBXGroup", children=[app_product, test_product], name="Products", sourceTree="<group>")
+    modern_product = add("product:modern", "PBXFileReference", explicitFileType="wrapper.application",
+                         includeInIndex=0, path=f"{PROJECT}.app", sourceTree="BUILT_PRODUCTS_DIR")
+    products_group = add("group:Products", "PBXGroup", children=[app_product, modern_product, test_product],
+                         name="Products", sourceTree="<group>")
     main_group = add("group:main", "PBXGroup", children=[app_group, test_group, package_ref, products_group], sourceTree="<group>")
 
     app_sources = add("phase:app:sources", "PBXSourcesBuildPhase", buildActionMask=2147483647,
@@ -155,11 +162,27 @@ def main():
         "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/Frameworks"],
         "MARKETING_VERSION": "0.1.0",
         "PRODUCT_BUNDLE_IDENTIFIER": BUNDLE_ID,
-        "PRODUCT_NAME": "$(TARGET_NAME)",
+        "PRODUCT_NAME": PROJECT,
         "SUPPORTS_MACCATALYST": "NO",
         "SWIFT_EMIT_LOC_STRINGS": "NO",
     }
     app_configs = configurations("app", dict(app_settings), dict(app_settings))
+
+    # The modern target is the same app (same sources, resources, Info.plist, bundle identifier and product
+    # name). Only its deployment target differs. It exists as a target, not a build configuration, so that
+    # tools which always pass "-configuration Release" (HCG Executable Maker) can select it by scheme.
+    modern_settings = {**app_settings, "IPHONEOS_DEPLOYMENT_TARGET": MODERN_DEPLOYMENT_TARGET}
+    modern_configs = configurations("modern", dict(modern_settings), dict(modern_settings))
+    modern_package_product = add("package-product:modern", "XCSwiftPackageProductDependency", productName=PACKAGE)
+    modern_sources = add("phase:modern:sources", "PBXSourcesBuildPhase", buildActionMask=2147483647,
+                         files=[build_file(r, p, "modern-src") for r, p in app_files if p.suffix == ".swift"],
+                         runOnlyForDeploymentPostprocessing=0)
+    modern_frameworks = add("phase:modern:frameworks", "PBXFrameworksBuildPhase", buildActionMask=2147483647,
+                            files=[add("build:package:modern", "PBXBuildFile", productRef=modern_package_product)],
+                            runOnlyForDeploymentPostprocessing=0)
+    modern_resources = add("phase:modern:resources", "PBXResourcesBuildPhase", buildActionMask=2147483647,
+                           files=[build_file(r, p, "modern-res") for r, p in app_files if p.suffix == ".xcassets"],
+                           runOnlyForDeploymentPostprocessing=0)
 
     test_settings = {
         "BUNDLE_LOADER": "$(TEST_HOST)",
@@ -180,6 +203,10 @@ def main():
                      buildPhases=[app_sources, app_frameworks, app_resources], buildRules=[], dependencies=[],
                      name=PROJECT, packageProductDependencies=[package_product], productName=PROJECT,
                      productReference=app_product, productType="com.apple.product-type.application")
+    modern_target = add("target:modern", "PBXNativeTarget", buildConfigurationList=modern_configs,
+                        buildPhases=[modern_sources, modern_frameworks, modern_resources], buildRules=[], dependencies=[],
+                        name=MODERN, packageProductDependencies=[modern_package_product], productName=MODERN,
+                        productReference=modern_product, productType="com.apple.product-type.application")
     proxy = add("proxy:tests->app", "PBXContainerItemProxy", containerPortal=project_id, proxyType=1,
                 remoteGlobalIDString=app_target, remoteInfo=PROJECT)
     dependency = add("dependency:tests->app", "PBXTargetDependency", target=app_target, targetProxy=proxy)
@@ -192,6 +219,7 @@ def main():
         "isa": "PBXProject",
         "attributes": {"BuildIndependentTargetsInParallel": 1, "LastSwiftUpdateCheck": 1500, "LastUpgradeCheck": 1500,
                        "TargetAttributes": {app_target: {"CreatedOnToolsVersion": "15.0"},
+                                            modern_target: {"CreatedOnToolsVersion": "15.0"},
                                             test_target: {"CreatedOnToolsVersion": "15.0", "TestTargetID": app_target}}},
         "buildConfigurationList": project_configs,
         "compatibilityVersion": "Xcode 13.0",
@@ -202,7 +230,7 @@ def main():
         "productRefGroup": products_group,
         "projectDirPath": "",
         "projectRoot": "",
-        "targets": [app_target, test_target],
+        "targets": [app_target, modern_target, test_target],
     }
 
     document = {"archiveVersion": 1, "classes": {}, "objectVersion": 54,
@@ -211,20 +239,33 @@ def main():
     project_dir = ROOT / f"{PROJECT}.xcodeproj"
     (project_dir / "xcshareddata/xcschemes").mkdir(parents=True, exist_ok=True)
     (project_dir / "project.pbxproj").write_text("// !$*UTF8*$!\n" + render(document, 0) + "\n")
-    (project_dir / "xcshareddata/xcschemes" / f"{PROJECT}.xcscheme").write_text(scheme(app_target, test_target))
+    schemes = project_dir / "xcshareddata/xcschemes"
+    (schemes / f"{PROJECT}.xcscheme").write_text(scheme(app_target, PROJECT, test_target))
+    (schemes / f"{MODERN}.xcscheme").write_text(scheme(modern_target, MODERN, None))
     print(f"wrote {project_dir.name}: {len(app_files)} app files, {len(test_files)} test files, {len(objects)} objects")
 
 
-def scheme(app_target, test_target):
+def scheme(app_target, app_name, test_target):
     def reference(identifier, buildable, name, container=f"container:{PROJECT}.xcodeproj"):
         return (f'<BuildableReference\n               BuildableIdentifier = "primary"\n'
                 f'               BlueprintIdentifier = "{identifier}"\n               BuildableName = "{buildable}"\n'
                 f'               BlueprintName = "{name}"\n               ReferencedContainer = "{container}">\n'
                 f'            </BuildableReference>')
 
-    app = reference(app_target, f"{PROJECT}.app", PROJECT)
-    tests = reference(test_target, f"{PROJECT}Tests.xctest", f"{PROJECT}Tests")
-    core = reference(f"{PACKAGE}Tests", f"{PACKAGE}Tests", f"{PACKAGE}Tests", f"container:{PACKAGE}")
+    app = reference(app_target, f"{PROJECT}.app", app_name)
+    testables = ""
+    if test_target is not None:
+        tests = reference(test_target, f"{PROJECT}Tests.xctest", f"{PROJECT}Tests")
+        core = reference(f"{PACKAGE}Tests", f"{PACKAGE}Tests", f"{PACKAGE}Tests", f"container:{PACKAGE}")
+        testables = f"""
+         <TestableReference
+            skipped = "NO">
+            {tests}
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            {core}
+         </TestableReference>"""
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme
    LastUpgradeVersion = "1500"
@@ -248,15 +289,7 @@ def scheme(app_target, test_target):
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
-      <Testables>
-         <TestableReference
-            skipped = "NO">
-            {tests}
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            {core}
-         </TestableReference>
+      <Testables>{testables}
       </Testables>
    </TestAction>
    <LaunchAction

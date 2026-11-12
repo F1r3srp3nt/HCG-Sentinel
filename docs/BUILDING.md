@@ -4,8 +4,8 @@
 
 | Need | Notes |
 | --- | --- |
-| A Mac with Xcode 15 or later | CI builds with the Xcode on GitHub's `macos-15` image. The project format opens in Xcode 13+, but only 15+ has been built. |
-| iOS deployment target | 14.7 (set in the project; `SentinelCore` declares iOS 14). |
+| A Mac with Xcode | Archived in CI with Xcode 16.4, 26.0.1, 26.2 and 26.6. Other versions are untested. |
+| iOS deployment target | Scheme `HCGSentinel`: 14.7. Scheme `HCGSentinelModern`: 15.0. `SentinelCore` declares iOS 14. |
 | Apple ID or developer team | Needed only to run on a physical device or export an IPA. |
 | No third-party dependencies | Nothing is downloaded at build time. |
 
@@ -13,6 +13,36 @@
 the release notes of your Xcode; Xcode 15 lists iOS 12 and later, Xcode 16 lists iOS 15 and later). If your Xcode
 cannot attach to iOS 14.7, either use an Xcode 15.x install for that device, or build an IPA and install it without
 the debugger (see "Installing an IPA" below). Building for a 14.7 deployment target works either way.
+
+## One entry point
+
+`Tools/build.sh` works from a clean clone, from paths with spaces, and never hides a failure:
+
+| Command | Does |
+| --- | --- |
+| `Tools/build.sh info` | Xcode, SDK, schemes and the effective deployment target, architectures and bundle identifier. |
+| `Tools/build.sh range` | Asks the selected Xcode which deployment targets it supports. |
+| `Tools/build.sh test-core` | Core tests on the Mac. |
+| `Tools/build.sh simulator` | Unsigned Simulator build. |
+| `Tools/build.sh archive` | Archive for a generic iOS device. Signed when `DEVELOPMENT_TEAM` is set, otherwise unsigned. |
+| `Tools/build.sh inspect` | Architecture, minimum OS, resources, embedded components and signature of the archived app. |
+| `Tools/build.sh export` | Development IPA from a signed archive. |
+
+Set `FLAVOR=modern` for the iOS 15+ variant and `DEVELOPER_DIR` to choose an Xcode. Logs go to `build/logs/`,
+result bundles to `build/*.xcresult`. Building through HCG Executable Maker is described in
+[MAKER.md](MAKER.md).
+
+## Two variants of the same app
+
+| Scheme / target | Minimum iOS | Use it when |
+| --- | --- | --- |
+| `HCGSentinel` | 14.7 | Default. One build for the iPhone X (14.7) and the iPhone 13 Pro Max (17.4). Needs an Xcode that accepts 14.7. |
+| `HCGSentinelModern` | 15.0 | The only Xcode available rejects 14.7. Does not install on iOS 14. |
+
+Both compile exactly the same sources, resources and `Info.plist`, with the same bundle identifier. The source
+uses availability checks (for example `NavigationStack` on iOS 16+, `NavigationView` before), so nothing is
+removed in either variant. The minimum is a real compiler setting, not an edited `MinimumOSVersion`: with 14.7 the
+compiler rejects any unguarded use of a newer API.
 
 ## Open and run
 
@@ -109,6 +139,11 @@ deliberately not scripted anywhere in this repository.
 * **macOS:** `swift test` (CryptoKit path), an unsigned Release build for a generic iOS device, the full scheme's
   tests on an iPhone simulator, then launches the app on iPhone and iPad simulators and uploads screenshots of every
   section as a build artifact.
+
+`.github/workflows/archive.yml` is the focused archive check. With explicitly selected Xcode versions (16.4 and
+26.6) it runs `Tools/build.sh info`, `range`, `simulator`, `archive` and `inspect` for the default scheme, and for
+`HCGSentinelModern` on 26.6. Complete logs and `.xcresult` bundles are uploaded as artifacts whether the job passes
+or fails. It archives unsigned: CI has no signing identity, so it never produces an installable app or an IPA.
 
 macOS runners are billed at a higher rate than Linux on private repositories. Remove or restrict the `app-macos` job
 if that matters to you.

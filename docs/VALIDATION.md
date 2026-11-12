@@ -2,19 +2,43 @@
 
 What has actually been checked, and how. "Not done" means exactly that.
 
-Last updated for CI run 3 (commit `1d2d0d5`):
-<https://github.com/F1r3srp3nt/HCG-Sentinel/actions/runs/43167233842>
+Sources: CI runs on GitHub Actions. Complete logs and `.xcresult` bundles are attached to each *Archive check*
+run as artifacts: <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/workflows/archive.yml>
 
 ## Summary
 
 | Level | Status |
 | --- | --- |
 | Implemented | App, core package, tools and documentation as described in the README. |
-| Compiled | Yes — on GitHub's `macos-15` runner with its default Xcode, and the core package on Linux. |
-| Unit-tested | Yes — 108 core tests on macOS, 107 on Linux, and the full scheme on an iOS simulator, all passing. |
-| Launched on simulator | Yes — iPhone and iPad simulators, by script. **Screens were not reviewed by a person or by the author.** |
+| Compiled | Yes, in CI only. Core on Linux and macOS; app for Simulator and for a generic iOS device. |
+| Archived | Yes, **unsigned**, with Xcode 16.4, 26.0.1, 26.2 and 26.6 (`HCGSentinel`), and 26.6 (`HCGSentinelModern`). |
+| Reported archive failure | **Not reproduced.** See "The archive failure" in `docs/MAKER.md`. |
+| Signed archive / IPA | **Not produced.** No signing identity is available to CI or to the author. |
+| Unit-tested | 108 core tests on macOS, 107 on Linux, and the full scheme on an iOS simulator, all passing. |
+| Launched on simulator | Yes, by script, on iPhone and iPad simulators (iOS 26.2). Screens were not reviewed. |
 | Tested on a physical device | **No.** Neither the iPhone 13 Pro Max (iOS 17.4) nor the iPhone X (iOS 14.7). |
-| Run on iOS 14 or 15 at all | **No.** Only an iOS 26.2 simulator was available in CI. |
+| Run on iOS 14 or 15 at all | **No.** |
+| Built through HCG Executable Maker | **No.** Maker's command was read from its source and reproduced; Maker itself was not run. |
+
+## Archive inspection
+
+From `Tools/build.sh inspect` on the unsigned CI archives:
+
+| Property | `HCGSentinel` (Xcode 26.6) | `HCGSentinelModern` (Xcode 26.6) |
+| --- | --- | --- |
+| Executable architecture | arm64 | arm64 |
+| Minimum OS in the Mach-O load command | 14.7 | 15.0 |
+| `MinimumOSVersion` in Info.plist | 14.7 | not captured in the log excerpt read; the Mach-O value above is authoritative |
+| SDK | iphoneos 26.5 | same |
+| Bundle identifier, version | `com.hcg.sentinel`, 0.1.0 (1) | same |
+| Resources | `Assets.car`, `AppIcon60x60@2x.png`, `AppIcon76x76@2x~ipad.png`, `Info.plist`, `PkgInfo` | same |
+| Embedded components | `Frameworks/libswift_Concurrency.dylib` (Swift's back-deployment library, added by Xcode for iOS 14); no app extensions; `SentinelCore` is linked statically | no embedded frameworks; no app extensions |
+| Signature, entitlements | none (unsigned) | none |
+
+Both columns are measured values from CI run <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/runs/43179079236>.
+
+Toolchain facts measured in CI: Xcode 26.6 reports a supported deployment range of 12.0 to 26.5.99 and treats a
+target outside it as a warning. `RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET` there is 15.0.
 
 ## Compiled
 
@@ -71,7 +95,8 @@ section through its deep link, and uploads 14 screenshots as the `simulator-scre
 | Privileged helper | No helper exists; the jailbreak environment is unknown. Only the protocol, client and reference server logic are tested, in memory. The loopback transport and Keychain storage have not been run. | See `docs/HELPER_INTERFACE.md`. |
 | Mac debugging proxy, Nexus | Interface and documentation only. | See the respective documents. |
 | Reduce Motion, Dynamic Type, VoiceOver | Implemented but unobserved. | Simulator steps 3–4. |
-| Signing, archive, IPA export | No signing identity. | `docs/BUILDING.md`. |
+| Signed archive and IPA export | No signing identity. Unsigned archives are verified; `Tools/build.sh export` has never run. | `docs/MAKER.md`, `docs/BUILDING.md`. |
+| The Xcode that produced the reported failure | Its version and supported range are unknown; no hosted runner has an Xcode newer than 26.6. | `Tools/build.sh range` on that Mac. |
 | Real-world capture files | Only synthetic captures have been parsed. Files from tcpdump/Wireshark may contain link types or blocks that are shown undecoded. | Import your own captures. |
 
 ## Record your own results here

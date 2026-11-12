@@ -1,0 +1,69 @@
+name: Archive check
+
+# Archives the app for a generic iOS device with explicitly selected Xcode versions, using the same command shape
+# as HCG Executable Maker (xcodebuild -project … -scheme HCGSentinel -configuration Release
+# -destination generic/platform=iOS -archivePath … archive). Unsigned: CI holds no signing identity, so no IPA
+# is exported here. Full logs and result bundles are kept as artifacts, also on failure.
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: archive-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  archive:
+    name: ${{ matrix.flavor }} · Xcode ${{ matrix.xcode }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-15, xcode: "16.4", flavor: legacy }
+          - { runner: macos-26, xcode: "26.6", flavor: legacy }
+          - { runner: macos-26, xcode: "26.6", flavor: modern }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      FLAVOR: ${{ matrix.flavor }}
+      # A path with spaces, on purpose.
+      BUILD_DIR: ${{ github.workspace }}/build output
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: |
+          app="/Applications/Xcode_${{ matrix.xcode }}.app"
+          if [ ! -d "$app" ]; then
+            echo "Xcode ${{ matrix.xcode }} is not installed on this runner image. Installed:"
+            ls -d /Applications/Xcode*.app
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+      - name: Project file matches its generator
+        run: |
+          python3 Tools/generate_xcodeproj.py
+          git diff --exit-code -- HCGSentinel.xcodeproj
+      - name: Toolchain and effective settings
+        run: Tools/build.sh info
+      - name: Deployment targets this Xcode supports
+        run: Tools/build.sh range
+      - name: Simulator build (unsigned)
+        run: Tools/build.sh simulator
+      - name: Archive for a generic iOS device (unsigned)
+        run: Tools/build.sh archive
+      - name: Inspect the archived app
+        run: Tools/build.sh inspect
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: archive-${{ matrix.flavor }}-xcode-${{ matrix.xcode }}
+          path: |
+            build output/logs
+            build output/*.xcresult
+          if-no-files-found: warn
