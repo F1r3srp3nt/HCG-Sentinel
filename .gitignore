@@ -1,0 +1,36 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.xcarchive
+*.ipa
+*.dSYM
+*.xcresult
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Signing material and local export settings: never commit
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.cer
+*.pem
+*.key
+ExportOptions.local.plist
+.env
+.env.*
+
+# Captured traffic and logs: never commit real captures. Tests build synthetic ones in code.
+*.pcap
+*.pcapng
+*.cap
+*.har
+sentinel-activity.log
+
+# Misc
+.DS_Store
+__pycache__/

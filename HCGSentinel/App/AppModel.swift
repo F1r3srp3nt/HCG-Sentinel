@@ -1,0 +1,248 @@
+import Combine
+import Foundation
+import SentinelCore
+
+/// Composition root. Owns the shared core objects, applies settings to every
+/// tool, and backs the dashboard. Everything here runs on the main queue.
+final class AppModel: ObservableObject {
+    @Published var settings: SentinelSettings {
+        didSet {
+            guard settings != oldValue else { return }
+            settingsDidChange(from: oldValue)
+        }
+    }
+    @Published private(set) var capabilities: [CapabilityState] = []
+    @Published private(set) var activity: [ActivityEntry] = []
+    @Published private(set) var activeOperations: [String] = []
+    @Published private(set) var diagnosticLogBytes = 0
+    @Published var stopReport: String?
+
+    let registry: CapabilityRegistry
+    let log: ActivityLog
+    let operations = OperationsCoordinator()
+    let connection = ConnectionMonitor()
+    let captureStore: CaptureStore
+    let diagnosticFile: DiagnosticLogFile
+
+    let bluetooth: BluetoothModel
+    let network: NetworkModel
+    let radio: RadioModel
+    let requests: RequestModel
+    let helper: HelperModel
+
+    private let store: SettingsStore
+    private var timer: Timer?
+
+    init(store: SettingsStore = UserDefaultsSettingsStore()) {
+        self.store = store
+        let loaded = store.load()
+        self.settings = loaded
+
+        // Locals first, so nothing reads `self` before every stored property is set.
+        let registry = CapabilityRegistry()
+        let log = ActivityLog()
+        self.registry = registry
+        self.log = log
+
+        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let captureStore = CaptureStore(directory: support.appendingPathComponent("Captures", isDirectory: true))
+        self.captureStore = captureStore
+        diagnosticFile = DiagnosticLogFile(url: support.appendingPathComponent("Diagnostics/sentinel-activity.log"))
+
+        bluetooth = BluetoothModel(central: CoreBluetoothCentral(), log: log, registry: registry)
+        network = NetworkModel(store: captureStore, log: log, registry: registry)
+        radio = RadioModel(transport: WebSocketNodeTransport(), log: log, registry: registry)
+        requests = RequestModel(transport: URLSessionHTTPTransport(), log: log, registry: registry)
+        helper = HelperModel(log: log, registry: registry)
+
+        registry.onChange = { [weak self] in self?.capabilities = self?.registry.states ?? [] }
+        log.onChange = { [weak self] in
+            if Thread.isMainThread { self?.refreshActivity() } else { DispatchQueue.main.async { self?.refreshActivity() } }
+        }
+        log.sink = { [weak self] entry in
+            guard let self = self, self.settings.diagnosticLoggingEnabled else { return }
+            self.diagnosticFile.append(entry)
+        }
+
+        registerOperations()
+        for model in [bluetooth.objectWillChange, network.objectWillChange, radio.objectWillChange,
+                      requests.objectWillChange, helper.objectWillChange] {
+            model.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshOperations() }.store(in: &cancellables)
+        }
+
+        connection.onFirstUpdate = { [weak self] in
+            self?.registry.recordVerified(.connectionDiagnostics, evidence: "iOS delivered a network path update for this app")
+        }
+
+        applySettings(loaded, initial: true)
+        capabilities = registry.states
+        diagnosticLogBytes = diagnosticFile.byteCount
+    }
+
+    private var cancellables = Set<AnyCancellable>()
+
+    /// Called once when the first scene becomes active.
+    func start() {
+        guard timer == nil else { return }
+        connection.start()
+        let removed = captureStore.purgeExpired(policy: settings.captureRetention)
+        if !removed.isEmpty {
+            log.record(.network, "Retention removed \(removed.count) saved capture(s) older than \(settings.captureRetention.title)")
+        }
+        network.reload()
+        log.record(.system, "Sentinel started. All active collection is off until you start it.")
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+    }
+
+    private func tick() {
+        bluetooth.tick()
+        radio.tick()
+        refreshOperations()
+    }
+
+    // MARK: Operations
+
+    private func registerOperations() {
+        operations.register(OperationHandle(id: "bluetooth", title: "Bluetooth scan",
+                                            isActive: { [bluetooth] in bluetooth.state.isActive },
+                                            stop: { [bluetooth] in bluetooth.stop(reason: "Scan stopped by Stop All Operations") }))
+        operations.register(OperationHandle(id: "request", title: "Test request",
+                                            isActive: { [requests] in requests.isSending },
+                                            stop: { [requests] in requests.cancel() }))
+        operations.register(OperationHandle(id: "radio", title: "Radio node session",
+                                            isActive: { [radio] in radio.state.isActive },
+                                            stop: { [radio] in radio.disconnect(reason: "Node session closed by Stop All Operations") }))
+        operations.register(OperationHandle(id: "helper", title: "Helper session",
+                                            isActive: { [helper] in helper.state.isActive },
+                                            stop: { [helper] in helper.disconnect() }))
+        operations.register(OperationHandle(id: "import", title: "Capture import",
+                                            isActive: { [network] in network.isParsing },
+                                            stop: { [network] in network.cancelImport() }))
+    }
+
+    /// Stops every Sentinel-owned scan, request and session. Saved captures,
+    /// settings and system services are left exactly as they are.
+    func stopAllOperations() {
+        let report = operations.stopAll()
+        log.record(.system, "Stop All Operations: \(report.summary)", severity: .notice)
+        stopReport = report.summary
+        refreshOperations()
+    }
+
+    private func refreshOperations() {
+        let titles = operations.activeOperations.map { $0.title }
+        if titles != activeOperations { activeOperations = titles }
+    }
+
+    // MARK: Settings
+
+    private func settingsDidChange(from old: SentinelSettings) {
+        store.save(settings)
+        applySettings(settings, initial: false)
+        if settings.previewMode && !old.previewMode {
+            let report = operations.stopAll()
+            log.record(.settings, "Preview mode on. Live tools paused. \(report.summary)", severity: .notice)
+        } else if !settings.previewMode && old.previewMode {
+            log.record(.settings, "Preview mode off. Demonstration data removed.")
+        }
+        if settings.diagnosticLoggingEnabled != old.diagnosticLoggingEnabled {
+            log.record(.settings, settings.diagnosticLoggingEnabled
+                       ? "Diagnostic logging on: redacted activity is now also written to a file in the app sandbox"
+                       : "Diagnostic logging off: nothing further is written to the log file")
+            diagnosticLogBytes = diagnosticFile.byteCount
+        }
+        refreshOperations()
+    }
+
+    private func applySettings(_ settings: SentinelSettings, initial: Bool) {
+        bluetooth.apply(settings)
+        network.apply(settings)
+        radio.apply(settings)
+        requests.apply(settings)
+        helper.apply(settings)
+
+        registry.setUserEnabled(.connectionDiagnostics, true)
+        registry.setUserEnabled(.captureFileInspection, true)
+        registry.setUserEnabled(.bluetoothDiscovery, settings.bluetoothScanningEnabled)
+        registry.setUserEnabled(.requestComposer, requests.endpoint != nil)
+        registry.setUserEnabled(.radioNodeLink, settings.radioNodeEnabled)
+        registry.setUserEnabled(.radioSpectrum, settings.radioNodeEnabled)
+        registry.setUserEnabled(.helperLink, settings.helperEnabled)
+    }
+
+    // MARK: Diagnostics
+
+    private func refreshActivity() {
+        activity = log.entries
+        if settings.diagnosticLoggingEnabled { diagnosticLogBytes = diagnosticFile.byteCount }
+    }
+
+    func deleteDiagnosticLog() {
+        diagnosticFile.delete()
+        diagnosticLogBytes = 0
+        log.record(.settings, "Diagnostic log file deleted")
+    }
+
+    func clearActivity() {
+        log.clear()
+    }
+
+    func capabilityState(_ id: CapabilityID) -> CapabilityState? {
+        capabilities.first { $0.id == id }
+    }
+
+    var verifiedCapabilityCount: Int { capabilities.filter { $0.readiness == .verified }.count }
+}
+
+/// Navigation state shared by the compact (tab) and regular (sidebar) layouts.
+final class Router: ObservableObject {
+    @Published var section: SentinelSection = .dashboard
+    @Published var sheet: SentinelSection?
+    var isCompact = true
+
+    static let tabSections: [SentinelSection] = [.dashboard, .network, .bluetooth, .radio, .requests]
+
+    /// Navigates only; never starts an operation.
+    func open(_ target: SentinelSection) {
+        if isCompact && !Router.tabSections.contains(target) {
+            sheet = target
+        } else {
+            sheet = nil
+            section = target
+        }
+    }
+
+    func layoutChanged(compact: Bool) {
+        isCompact = compact
+        if compact && !Router.tabSections.contains(section) {
+            section = .dashboard
+        }
+    }
+}
+
+extension SentinelSection {
+    var icon: String {
+        switch self {
+        case .dashboard: return "square.grid.2x2"
+        case .network: return "network"
+        case .bluetooth: return "dot.radiowaves.left.and.right"
+        case .radio: return "antenna.radiowaves.left.and.right"
+        case .requests: return "paperplane"
+        case .capabilities: return "checkmark.seal"
+        case .settings: return "gearshape"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .dashboard: return "Dashboard"
+        case .network: return "Network"
+        case .bluetooth: return "Bluetooth"
+        case .radio: return "Radio"
+        case .requests: return "Requests"
+        case .capabilities: return "Capabilities"
+        case .settings: return "Settings"
+        }
+    }
+}

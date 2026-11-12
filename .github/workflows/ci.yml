@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-linux:
+    name: SentinelCore tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: swift --version
+      - name: Start local test service
+        run: |
+          python3 Tools/local_test_service.py --port 8080 &
+          sleep 1
+      - name: swift test
+        env:
+          SENTINEL_TEST_SERVICE_URL: http://127.0.0.1:8080
+        run: swift test --package-path SentinelCore
+
+  app-macos:
+    name: App build and tests (Xcode)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Project file is up to date
+        run: |
+          python3 Tools/generate_xcodeproj.py
+          git diff --exit-code -- HCGSentinel.xcodeproj
+      - name: Start local test service
+        run: |
+          python3 Tools/local_test_service.py --port 8080 &
+          sleep 1
+      - name: SentinelCore tests (macOS, includes CryptoKit cross-check)
+        env:
+          SENTINEL_TEST_SERVICE_URL: http://127.0.0.1:8080
+        run: swift test --package-path SentinelCore
+      - name: Build for a generic iOS device (unsigned, arm64)
+        run: |
+          xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel \
+            -destination 'generic/platform=iOS' -configuration Release \
+            CODE_SIGNING_ALLOWED=NO -quiet
+      - name: Pick simulators
+        run: |
+          xcrun simctl list devices available -j > devices.json
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import json
+          runtimes = json.load(open("devices.json"))["devices"]
+          def pick(prefix):
+              for runtime in sorted((r for r in runtimes if "iOS" in r), reverse=True):
+                  for device in runtimes[runtime]:
+                      if device["name"].startswith(prefix):
+                          return device["udid"]
+              return ""
+          print("IPHONE_UDID=" + pick("iPhone"))
+          print("IPAD_UDID=" + pick("iPad"))
+          PY
+      - name: Unit tests on iPhone simulator
+        run: |
+          xcodebuild test -project HCGSentinel.xcodeproj -scheme HCGSentinel \
+            -destination "platform=iOS Simulator,id=$IPHONE_UDID" \
+            CODE_SIGNING_ALLOWED=NO -quiet
+      - name: Launch on iPhone and iPad simulators and capture screenshots
+        run: |
+          xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim \
+            CODE_SIGNING_ALLOWED=NO -quiet
+          APP=build/sim/Build/Products/Debug-iphonesimulator/HCGSentinel.app
+          mkdir -p screenshots
+          for entry in "iphone:$IPHONE_UDID" "ipad:$IPAD_UDID"; do
+            name="${entry%%:*}"; udid="${entry#*:}"
+            [ -n "$udid" ] || continue
+            xcrun simctl boot "$udid" || true
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl install "$udid" "$APP"
+            xcrun simctl launch "$udid" com.hcg.sentinel
+            sleep 8
+            xcrun simctl io "$udid" screenshot "screenshots/$name-dashboard.png"
+            for section in network bluetooth radio requests settings capabilities; do
+              xcrun simctl openurl "$udid" "hcgsentinel://open/$section"
+              sleep 4
+              xcrun simctl io "$udid" screenshot "screenshots/$name-$section.png"
+            done
+            xcrun simctl terminate "$udid" com.hcg.sentinel || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-screenshots
+          path: screenshots
+          if-no-files-found: ignore
