@@ -1,0 +1,34 @@
+name: Probe newer Xcode (temporary)
+
+# One-off reproduction attempt: is there a hosted runner with an Xcode newer than 26.6, and does it reject 14.7?
+on:
+  push:
+    branches: ["claude/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-27, macos-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installed Xcodes
+        run: |
+          sw_vers
+          ls -d /Applications/Xcode*.app
+          echo "default: $(xcode-select -p)"
+      - name: Newest installed Xcode
+        run: |
+          newest="$(ls -d /Applications/Xcode_*.app | sort -V | tail -n 1)"
+          echo "DEVELOPER_DIR=$newest/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Using $newest"
+      - run: Tools/build.sh info
+      - run: Tools/build.sh range
+      - run: Tools/build.sh archive
+      - run: Tools/build.sh inspect

@@ -110,7 +110,7 @@ cmd_info() {
 }
 
 cmd_range() {
-  echo "Xcode $(xcodebuild -version | head -n 1 | sed 's/Xcode //'), when asked to build for iOS 8.0, reports:"
+  echo "Xcode $(xcodebuild -version | sed -n '1s/Xcode //p'), when asked to build for iOS 8.0, reports:"
   local range; range="$(supported_range)"
   if [ -n "$range" ]; then echo "$range" | cut -c1-400 | sed 's/^/  /'
   else echo "  no deployment-target diagnostic (see $LOGS/range-probe.log)"; tail -n 5 "$LOGS/range-probe.log" | cut -c1-300 | sed 's/^/  | /'; fi
