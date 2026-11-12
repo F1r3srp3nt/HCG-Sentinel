@@ -14,8 +14,8 @@
 #   DEVELOPMENT_TEAM   Apple team ID. When set, archive is signed (automatic signing). When unset, the archive
 #                      is UNSIGNED: good for checking the build, not installable, not exportable.
 #   BUNDLE_ID          Optional bundle identifier override for signing with your own team.
-#   FLAVOR             "legacy" (default): iOS 14.7 and later, configuration Release.
-#                      "modern": iOS 15.0 and later, configuration ReleaseModern. Will not install on iOS 14.
+#   FLAVOR             "legacy" (default): scheme HCGSentinel, iOS 14.7 and later.
+#                      "modern": scheme HCGSentinelModern, iOS 15.0 and later. Will not install on iOS 14.
 #   IOS_DEPLOYMENT_TARGET  Optional explicit minimum iOS for this build only (e.g. 16.0). Use it only when the
 #                      selected Xcode rejects the flavor's target; the result is reported by 'inspect'.
 #   BUILD_DIR          Output directory (default: <repo>/build).
@@ -26,15 +26,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-$ROOT/build}"
 PROJECT="$ROOT/HCGSentinel.xcodeproj"
-SCHEME="HCGSentinel"
 ARCHIVE="$BUILD_DIR/HCGSentinel.xcarchive"
 LOGS="$BUILD_DIR/logs"
 mkdir -p "$LOGS"
 
 FLAVOR="${FLAVOR:-legacy}"
+RELEASE_CONFIG="Release"
+DEBUG_CONFIG="Debug"
 case "$FLAVOR" in
-  legacy) RELEASE_CONFIG="Release"; DEBUG_CONFIG="Debug" ;;
-  modern) RELEASE_CONFIG="ReleaseModern"; DEBUG_CONFIG="DebugModern" ;;
+  legacy) SCHEME="HCGSentinel" ;;
+  modern) SCHEME="HCGSentinelModern" ;;
   *) echo "FLAVOR must be 'legacy' or 'modern', not '$FLAVOR'."; exit 2 ;;
 esac
 
@@ -100,7 +101,7 @@ cmd_info() {
   echo "iOS SDK: $(xcrun --sdk iphoneos --show-sdk-version) at $(xcrun --sdk iphoneos --show-sdk-path)"
   echo "Project: $PROJECT"
   xcodebuild -list -project "$PROJECT" 2>/dev/null | sed -n '/Targets:/,$p'
-  echo "Flavor: $FLAVOR (configuration $RELEASE_CONFIG)${IOS_DEPLOYMENT_TARGET:+, IOS_DEPLOYMENT_TARGET override $IOS_DEPLOYMENT_TARGET}"
+  echo "Flavor: $FLAVOR (scheme $SCHEME)${IOS_DEPLOYMENT_TARGET:+, IOS_DEPLOYMENT_TARGET override $IOS_DEPLOYMENT_TARGET}"
   echo "Effective settings (scheme $SCHEME, $RELEASE_CONFIG, generic iOS device):"
   xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration "$RELEASE_CONFIG" -destination 'generic/platform=iOS' \
     -showBuildSettings 2>/dev/null \
