@@ -45,7 +45,7 @@ final class PlatformNetworkProbe: NSObject, NetworkAssessmentProbe, URLSessionTa
         monitorQueue.asyncAfter(deadline: .now() + 6) { withExtendedLifetime(monitor) {} }
     }
 
-    private static func facts(from path: NWPath) -> ConnectionFacts {
+    private static func facts(from path: Network.NWPath) -> ConnectionFacts {
         var types: [String] = []
         if path.usesInterfaceType(.wifi) { types.append("Wi-Fi") }
         if path.usesInterfaceType(.cellular) { types.append("Cellular") }
