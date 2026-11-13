@@ -70,13 +70,16 @@ jobs:
         timeout-minutes: 20
         env:
           TEST_RUNNER_SENTINEL_NODE_URL: ws://127.0.0.1:8765/
+          TEST_RUNNER_SENTINEL_NETWORK_CHECK: "1"
         run: |
           python3 Tools/mock_radio_node.py --port 8765 --key "$SENTINEL_NODE_KEY" > mock-node.log 2>&1 &
           sleep 2
           export TEST_RUNNER_SENTINEL_NODE_KEY="$SENTINEL_NODE_KEY"
+          set -o pipefail
           xcodebuild test -project HCGSentinel.xcodeproj -scheme HCGSentinel \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath build/tests \
-            CODE_SIGNING_ALLOWED=NO -quiet
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee xcodebuild-test.log | grep -E "CHECK-MY-NETWORK|Test Case .*(failed|skipped)|error:|Executed [0-9]+ test" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" xcodebuild-test.log
       - name: Mock node log
         if: always()
         run: cat mock-node.log 2>/dev/null || echo "no mock node log"
@@ -141,6 +144,12 @@ jobs:
                 xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-$pass-$section.png"
               done
             done
+            # Check My Network after a real run on the runner's network (the check takes up to about a minute).
+            xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+            sleep 1
+            xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection networkcheck -SentinelRunNetworkCheck YES
+            sleep 60
+            xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-run-networkcheck.png"
           done
           xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
           for file in screenshots/*.png; do sips -Z 1400 "$file" >/dev/null; done

@@ -19,6 +19,12 @@ struct NetworkCheckView: View {
             }
         }
         .navigationBarTitle("Check My Network", displayMode: .inline)
+        .onAppear {
+            #if DEBUG
+            // Screenshot checks in CI launch with -SentinelRunNetworkCheck to capture a finished report.
+            if ProcessInfo.processInfo.arguments.contains("-SentinelRunNetworkCheck"), check.report == nil { check.start() }
+            #endif
+        }
     }
 
     private var introCard: some View {

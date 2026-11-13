@@ -101,6 +101,10 @@
 			isa = PBXBuildFile;
 			fileRef = 9682A16F8A32150289C8CF97;
 		};
+		7B8B027BDD33649C3F52BD01 = {
+			isa = PBXBuildFile;
+			fileRef = CD42F08BBEBE850DF40BF21E;
+		};
 		867B2F884CE9E3583F4CFA49 = {
 			isa = PBXBuildFile;
 			fileRef = 16B7D591CAA76D555A803EF1;
@@ -385,6 +389,12 @@
 			path = AppModel.swift;
 			sourceTree = "<group>";
 		};
+		CD42F08BBEBE850DF40BF21E = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = NetworkCheckLiveTests.swift;
+			sourceTree = "<group>";
+		};
 		CDDBFBE5C403BA9743998BE6 = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -529,6 +539,7 @@
 			children = (
 				A091C20761EA4F0FAF6E04A1,
 				4751A22D65F1D1961EC45604,
+				CD42F08BBEBE850DF40BF21E,
 			);
 			path = HCGSentinelTests;
 			sourceTree = "<group>";
@@ -679,6 +690,7 @@
 			files = (
 				BCF9D3424C7921671D089749,
 				F02E98F076DCF261EB8F25F7,
+				7B8B027BDD33649C3F52BD01,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
