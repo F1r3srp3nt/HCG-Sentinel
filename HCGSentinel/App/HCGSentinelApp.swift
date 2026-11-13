@@ -15,7 +15,17 @@ struct HCGSentinelApp: App {
         WindowGroup {
             RootView()
                 .modifier(ModelInjection(app: app, router: router))
-                .onAppear { app.start() }
+                .onAppear {
+                    app.start()
+                    #if DEBUG
+                    // Screenshot checks in CI launch with "-SentinelSection <name>" instead of a deep link, because
+                    // opening a URL from outside shows a system confirmation prompt on recent iOS versions.
+                    if let name = UserDefaults.standard.string(forKey: "SentinelSection"),
+                       let section = SentinelSection.allCases.first(where: { $0.rawValue.lowercased() == name.lowercased() }) {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { router.open(section) }
+                    }
+                    #endif
+                }
                 .onOpenURL { url in
                     // Deep links navigate only. They can never start an operation.
                     if let section = DeepLink.section(from: url) { router.open(section) }

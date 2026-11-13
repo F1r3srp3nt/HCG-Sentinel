@@ -90,7 +90,7 @@ jobs:
           - { device: small, sizes: "large extra-extra-extra-large accessibility-extra-extra-large" }
           - { device: iPad, sizes: "large" }
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
@@ -109,26 +109,27 @@ jobs:
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
           xcrun simctl install "$SIMULATOR_UDID" HCGSentinel.app
       - name: Capture each section at each text size
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           set -x
           mkdir -p screenshots
-          shoot() { # size, pass, extra launch arguments...
-            local size="$1" pass="$2"; shift 2
-            xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
-            xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel "$@"
-            sleep 7
-            xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-$pass-dashboard.png"
-            for section in networkcheck network bluetooth radio requests settings capabilities; do
-              xcrun simctl openurl "$SIMULATOR_UDID" "hcgsentinel://open/$section"
-              sleep 4
-              xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-$pass-$section.png"
-            done
-          }
+          # Each screen is opened by relaunching with a debug-only launch argument. Deep links are not used here:
+          # opening a URL from outside the app shows an "Open in …?" system prompt that covers the screen.
           for size in ${{ matrix.sizes }}; do
             xcrun simctl ui "$SIMULATOR_UDID" content_size "$size"
-            shoot "$size" top
-            shoot "$size" end -SentinelScrollToEnd
+            for pass in top end; do
+              for section in dashboard networkcheck network bluetooth radio requests settings capabilities; do
+                xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+                sleep 1
+                if [ "$pass" = end ]; then
+                  xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection "$section" -SentinelScrollToEnd YES
+                else
+                  xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection "$section"
+                fi
+                sleep 6
+                xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-$pass-$section.png"
+              done
+            done
           done
           xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
           for file in screenshots/*.png; do sips -Z 1400 "$file" >/dev/null; done
