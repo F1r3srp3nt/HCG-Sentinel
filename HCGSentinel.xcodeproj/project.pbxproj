@@ -197,6 +197,10 @@
 			isa = PBXBuildFile;
 			fileRef = B2656B33FA9426E806C4D254;
 		};
+		F02E98F076DCF261EB8F25F7 = {
+			isa = PBXBuildFile;
+			fileRef = 4751A22D65F1D1961EC45604;
+		};
 		F73CDB9CD02E3FC77A88B4D5 = {
 			isa = PBXBuildFile;
 			fileRef = 9682A16F8A32150289C8CF97;
@@ -258,6 +262,12 @@
 			includeInIndex = 0;
 			path = HCGSentinel.app;
 			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+		4751A22D65F1D1961EC45604 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = MockNodeIntegrationTests.swift;
+			sourceTree = "<group>";
 		};
 		50B9C78F8D6CE7155EFFDE38 = {
 			isa = PBXFileReference;
@@ -518,6 +528,7 @@
 			isa = PBXGroup;
 			children = (
 				A091C20761EA4F0FAF6E04A1,
+				4751A22D65F1D1961EC45604,
 			);
 			path = HCGSentinelTests;
 			sourceTree = "<group>";
@@ -667,6 +678,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BCF9D3424C7921671D089749,
+				F02E98F076DCF261EB8F25F7,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -63,12 +63,23 @@ jobs:
             CODE_SIGNING_ALLOWED=NO -quiet
       - name: Pick an iPhone simulator
         run: python3 Tools/pick_simulator.py iPhone >> "$GITHUB_ENV"
-      - name: Unit tests on iPhone simulator
-        timeout-minutes: 20
+      - name: Start mock radio node (simulated data only)
         run: |
+          echo "SENTINEL_NODE_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')" >> "$GITHUB_ENV"
+      - name: Unit tests on iPhone simulator (includes the app against the mock node)
+        timeout-minutes: 20
+        env:
+          TEST_RUNNER_SENTINEL_NODE_URL: ws://127.0.0.1:8765/
+        run: |
+          python3 Tools/mock_radio_node.py --port 8765 --key "$SENTINEL_NODE_KEY" > mock-node.log 2>&1 &
+          sleep 2
+          export TEST_RUNNER_SENTINEL_NODE_KEY="$SENTINEL_NODE_KEY"
           xcodebuild test -project HCGSentinel.xcodeproj -scheme HCGSentinel \
             -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath build/tests \
             CODE_SIGNING_ALLOWED=NO -quiet
+      - name: Mock node log
+        if: always()
+        run: cat mock-node.log 2>/dev/null || echo "no mock node log"
       - name: Package the simulator app for the screenshot jobs
         run: tar -C build/tests/Build/Products/Debug-iphonesimulator -czf simulator-app.tar.gz HCGSentinel.app
       - uses: actions/upload-artifact@v4
