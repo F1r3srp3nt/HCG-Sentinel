@@ -29,6 +29,7 @@ final class AppModel: ObservableObject {
     let radio: RadioModel
     let requests: RequestModel
     let helper: HelperModel
+    let networkCheck: NetworkCheckModel
 
     private let store: SettingsStore
     private var timer: Timer?
@@ -55,6 +56,7 @@ final class AppModel: ObservableObject {
         radio = RadioModel(transport: WebSocketNodeTransport(), log: log, registry: registry)
         requests = RequestModel(transport: URLSessionHTTPTransport(), log: log, registry: registry)
         helper = HelperModel(log: log, registry: registry)
+        networkCheck = NetworkCheckModel(probe: PlatformNetworkProbe(), log: log, registry: registry)
 
         registry.onChange = { [weak self] in self?.capabilities = self?.registry.states ?? [] }
         log.onChange = { [weak self] in
@@ -67,7 +69,7 @@ final class AppModel: ObservableObject {
 
         registerOperations()
         for model in [bluetooth.objectWillChange, network.objectWillChange, radio.objectWillChange,
-                      requests.objectWillChange, helper.objectWillChange] {
+                      requests.objectWillChange, helper.objectWillChange, networkCheck.objectWillChange] {
             model.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshOperations() }.store(in: &cancellables)
         }
 
@@ -116,6 +118,9 @@ final class AppModel: ObservableObject {
         operations.register(OperationHandle(id: "helper", title: "Helper session",
                                             isActive: { [helper] in helper.state.isActive },
                                             stop: { [helper] in helper.disconnect() }))
+        operations.register(OperationHandle(id: "networkcheck", title: "Network check",
+                                            isActive: { [networkCheck] in networkCheck.isRunning },
+                                            stop: { [networkCheck] in networkCheck.cancel() }))
         operations.register(OperationHandle(id: "import", title: "Capture import",
                                             isActive: { [network] in network.isParsing },
                                             stop: { [network] in network.cancelImport() }))
@@ -146,6 +151,19 @@ final class AppModel: ObservableObject {
         } else if !settings.previewMode && old.previewMode {
             log.record(.settings, "Preview mode off. Demonstration data removed.")
         }
+        if settings.scanningEnabled != old.scanningEnabled {
+            log.record(.settings, settings.scanningEnabled
+                       ? "Scanning on: you can now start Bluetooth scans and request Wi-Fi scans. Nothing starts by itself."
+                       : "Scanning off: running Bluetooth and Wi-Fi scans were stopped")
+        }
+        if settings.remoteConnectionsEnabled != old.remoteConnectionsEnabled {
+            log.record(.settings, settings.remoteConnectionsEnabled
+                       ? "Remote connections on: you can now connect to your node and helper and send test requests. Nothing connects by itself."
+                       : "Remote connections off: node and helper sessions closed and any test request cancelled")
+        }
+        if settings.animationsEnabled != old.animationsEnabled {
+            log.record(.settings, settings.animationsEnabled ? "Animation on" : "Animation off")
+        }
         if settings.diagnosticLoggingEnabled != old.diagnosticLoggingEnabled {
             log.record(.settings, settings.diagnosticLoggingEnabled
                        ? "Diagnostic logging on: redacted activity is now also written to a file in the app sandbox"
@@ -158,17 +176,21 @@ final class AppModel: ObservableObject {
     private func applySettings(_ settings: SentinelSettings, initial: Bool) {
         bluetooth.apply(settings)
         network.apply(settings)
+        networkCheck.apply(settings)
         radio.apply(settings)
         requests.apply(settings)
         helper.apply(settings)
 
         registry.setUserEnabled(.connectionDiagnostics, true)
         registry.setUserEnabled(.captureFileInspection, true)
-        registry.setUserEnabled(.bluetoothDiscovery, settings.bluetoothScanningEnabled)
-        registry.setUserEnabled(.requestComposer, requests.endpoint != nil)
-        registry.setUserEnabled(.radioNodeLink, settings.radioNodeEnabled)
-        registry.setUserEnabled(.radioSpectrum, settings.radioNodeEnabled)
-        registry.setUserEnabled(.helperLink, settings.helperEnabled)
+        registry.setUserEnabled(.networkAssessment, true)
+        registry.setUserEnabled(.bluetoothDiscovery, settings.scanningEnabled)
+        registry.setUserEnabled(.requestComposer, settings.remoteConnectionsEnabled && !requests.endpoints.isEmpty)
+        registry.setUserEnabled(.radioNodeLink, settings.remoteConnectionsEnabled)
+        registry.setUserEnabled(.radioSpectrum, settings.remoteConnectionsEnabled)
+        registry.setUserEnabled(.nearbyWifiDiscovery, settings.remoteConnectionsEnabled && settings.scanningEnabled)
+        registry.setUserEnabled(.helperLink, settings.remoteConnectionsEnabled)
+        registry.setUserEnabled(.trafficFiltering, settings.remoteConnectionsEnabled)
     }
 
     // MARK: Diagnostics
@@ -226,6 +248,7 @@ extension SentinelSection {
         switch self {
         case .dashboard: return "square.grid.2x2"
         case .network: return "network"
+        case .networkCheck: return "checkmark.shield"
         case .bluetooth: return "dot.radiowaves.left.and.right"
         case .radio: return "antenna.radiowaves.left.and.right"
         case .requests: return "paperplane"
@@ -238,6 +261,7 @@ extension SentinelSection {
         switch self {
         case .dashboard: return "Dashboard"
         case .network: return "Network"
+        case .networkCheck: return "Check"
         case .bluetooth: return "Bluetooth"
         case .radio: return "Radio"
         case .requests: return "Requests"

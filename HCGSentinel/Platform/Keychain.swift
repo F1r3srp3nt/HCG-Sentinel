@@ -5,7 +5,7 @@ import Security
 /// node token and the helper pairing key. Items are device-only and never synced.
 enum Keychain {
     enum Item: String {
-        case nodeToken = "radio-node-token"
+        case nodePairingKey = "radio-node-pairing-key"
         case helperPairingKey = "helper-pairing-key"
     }
 

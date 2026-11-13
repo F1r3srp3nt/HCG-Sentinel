@@ -2,13 +2,12 @@ import SentinelCore
 import SwiftUI
 
 struct SettingsView: View {
-    @EnvironmentObject private var app: AppModel
-
     var body: some View {
         Screen {
-            Explanation("Every form of active collection is off until you turn it on. Sentinel never installs certificates, changes system networking or starts persistent background services.")
+            Explanation("Every scan and every outside connection is off until you turn it on, and nothing starts by itself even then. Sentinel never installs certificates or profiles, changes system networking, or starts background services.")
             StopAllCard()
-            DisplaySettingsCard()
+            MasterSwitchesCard()
+            PreviewSettingsCard()
             BluetoothSettingsCard()
             RetentionSettingsCard()
             EndpointSettingsCard()
@@ -41,22 +40,41 @@ private struct StopAllCard: View {
     }
 }
 
-// MARK: - Display
+// MARK: - Master switches
 
-private struct DisplaySettingsCard: View {
+private struct MasterSwitchesCard: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         SentinelCard {
-            SectionLabel(text: "Display")
+            SectionLabel(text: "Main switches")
+            SettingToggle(title: "Scanning",
+                          detail: "Enables: starting Bluetooth LE scans in Bluetooth Explorer and requesting nearby Wi-Fi scans from your node. Turning it off stops any Bluetooth scan at once and cancels a pending Wi-Fi scan request. It never starts a scan by itself.",
+                          isOn: $app.settings.scanningEnabled)
+            Rectangle().fill(Theme.hairline).frame(height: 1)
+            SettingToggle(title: "Remote connections",
+                          detail: "Enables: connecting to your external analysis node, probing your privileged helper on this device, and sending test requests to your endpoints. Turning it off closes node and helper sessions and cancels a request in flight. Check My Network is separate and only runs when you press Start.",
+                          isOn: $app.settings.remoteConnectionsEnabled)
+            Rectangle().fill(Theme.hairline).frame(height: 1)
             SettingToggle(title: "Animation",
-                          detail: "Turns the status pulses and the moving light line on or off. Nothing else changes."
+                          detail: "Enables: the status pulses and the moving light line. Turning it off makes them static; nothing else changes."
                             + (reduceMotion ? " iOS Reduce Motion is on, so animation stays off regardless of this switch." : ""),
                           isOn: $app.settings.animationsEnabled)
-            Rectangle().fill(Theme.hairline).frame(height: 1)
+        }
+    }
+}
+
+// MARK: - Preview
+
+private struct PreviewSettingsCard: View {
+    @EnvironmentObject private var app: AppModel
+
+    var body: some View {
+        SentinelCard {
+            SectionLabel(text: "Display")
             SettingToggle(title: "Preview mode",
-                          detail: "Fills the tools with fabricated sample data under a clear banner, for looking around without hardware. Turning it on stops running operations and pauses live scanning, sending and connecting until it is turned off. Sample data is never logged or saved.",
+                          detail: "Fills some tools with fabricated sample data under a clear banner, for looking around without hardware. Turning it on stops running operations and pauses scanning, sending and connecting until it is turned off. Sample data is never logged or saved, and Check My Network never shows sample results.",
                           isOn: $app.settings.previewMode)
         }
     }
@@ -69,11 +87,7 @@ private struct BluetoothSettingsCard: View {
 
     var body: some View {
         SentinelCard {
-            SectionLabel(text: "Bluetooth scanning")
-            SettingToggle(title: "Allow Bluetooth scanning",
-                          detail: "Lets you start a scan in Bluetooth Explorer. It does not start one. The first scan makes iOS ask for Bluetooth permission. Turning this off stops a running scan.",
-                          isOn: $app.settings.bluetoothScanningEnabled)
-            Rectangle().fill(Theme.hairline).frame(height: 1)
+            SectionLabel(text: "Bluetooth scan options")
             SettingToggle(title: "Continuous signal updates",
                           detail: "Off: each device is reported about once per scan. On: every advertisement is reported so RSSI and last-seen keep updating, which uses more battery.",
                           isOn: $app.settings.bluetoothContinuousUpdates)
@@ -147,7 +161,7 @@ private struct RetentionSettingsCard: View {
     }
 }
 
-// MARK: - Test endpoint
+// MARK: - Test endpoints
 
 private struct EndpointSettingsCard: View {
     @EnvironmentObject private var app: AppModel
@@ -158,7 +172,25 @@ private struct EndpointSettingsCard: View {
     var body: some View {
         SentinelCard {
             SectionLabel(text: "Request testing")
-            Text("HCG test endpoint").font(.body).foregroundColor(Theme.textPrimary)
+            Text("Allowed test endpoints").font(.body).foregroundColor(Theme.textPrimary)
+            if app.settings.testEndpoints.isEmpty {
+                Explanation("None yet. The Request Composer can only send to endpoints listed here.")
+            }
+            ForEach(Array(app.settings.testEndpoints.enumerated()), id: \.offset) { item in
+                AdaptiveStack {
+                    Text(item.offset == 0 ? "\(item.element)  (primary)" : item.element)
+                        .font(Theme.mono(.subheadline))
+                        .foregroundColor(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button(action: { remove(at: item.offset) }) {
+                        Label("Remove", systemImage: "minus.circle").foregroundColor(Theme.danger)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .frame(minHeight: 44)
+                    .accessibilityLabel("Remove \(item.element)")
+                }
+            }
             TextField("https://test.example or http://192.168.1.20:8080", text: $draft)
                 .technicalInput()
                 .keyboardType(.URL)
@@ -166,36 +198,35 @@ private struct EndpointSettingsCard: View {
             if let problem = problem {
                 NoticeBanner(icon: "exclamationmark.triangle.fill", text: problem, tone: .warning)
             }
-            HStack(spacing: 10) {
-                Button("Use this endpoint") { save() }
-                    .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
-                Button("Clear") {
-                    draft = ""
-                    problem = nil
-                    app.settings.testEndpoint = ""
-                }
-                .buttonStyle(SentinelButtonStyle(kind: .secondary))
-            }
-            InfoRow(label: "Selected", value: requests.endpoint?.displayString ?? "None", mono: true)
-            Explanation("The only place the Request Composer may send to. Enter scheme, host and optional port for a service you are authorised to test. Changing it cancels a request in progress. Selecting an endpoint sends nothing.")
+            Button("Add endpoint") { add() }
+                .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
+                .disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty || app.settings.testEndpoints.count >= TestEndpoint.maxEndpoints)
+            Explanation("Enter scheme, host and optional port of services you are authorised to test (up to \(TestEndpoint.maxEndpoints)). Requests may only go to these. Adding one sends nothing; removing one cancels a request in progress.")
             Rectangle().fill(Theme.hairline).frame(height: 1)
             Stepper(value: $app.settings.requestTimeoutSeconds, in: 5...120, step: 5) {
                 Text("Timeout: \(app.settings.requestTimeoutSeconds) s").font(.body).foregroundColor(Theme.textPrimary)
             }
             Explanation("How long a test request waits for the endpoint before it is abandoned.")
         }
-        .onAppear { draft = app.settings.testEndpoint }
     }
 
-    private func save() {
+    private func add() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            _ = try TestEndpoint(string: text)
+            let endpoint = try TestEndpoint(string: text)
             problem = nil
-            app.settings.testEndpoint = text
+            if !app.settings.testEndpoints.contains(where: { (try? TestEndpoint(string: $0)) == endpoint }) {
+                app.settings.testEndpoints.append(endpoint.displayString)
+            }
+            draft = ""
         } catch {
             problem = (error as? RequestValidationError)?.userMessage ?? "That endpoint is not valid."
         }
+    }
+
+    private func remove(at index: Int) {
+        guard app.settings.testEndpoints.indices.contains(index) else { return }
+        app.settings.testEndpoints.remove(at: index)
     }
 }
 
@@ -205,52 +236,49 @@ private struct NodeSettingsCard: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var radio: RadioModel
     @State private var address = ""
-    @State private var token = ""
+    @State private var key = ""
     @State private var problem: String?
 
     var body: some View {
         SentinelCard {
             SectionLabel(text: "External analysis node")
-            SettingToggle(title: "Allow node connection",
-                          detail: "Lets you connect from Radio Lab to a node you operate. It does not connect by itself. Turning this off closes an open node session.",
-                          isOn: $app.settings.radioNodeEnabled)
-            Rectangle().fill(Theme.hairline).frame(height: 1)
+            Explanation(app.settings.remoteConnectionsEnabled
+                        ? "Remote connections are on. Radio Lab connects only when you tap Connect."
+                        : "Remote connections are off, so Radio Lab stays disconnected. You can still prepare the address and key.")
             Text("Node address").font(.body).foregroundColor(Theme.textPrimary)
             TextField("ws://192.168.1.50:8765/ or wss://node.example/", text: $address)
                 .technicalInput()
                 .keyboardType(.URL)
                 .sentinelField()
-            if let problem = problem {
-                NoticeBanner(icon: "exclamationmark.triangle.fill", text: problem, tone: .warning)
-            }
             Button("Save address") { saveAddress() }
                 .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
             Explanation("Use wss:// when the node is not on your own local network. Plain ws:// is only permitted by iOS for local addresses.")
-            tokenControls
-        }
-        .onAppear { address = app.settings.radioNodeAddress }
-    }
-
-    private var tokenControls: some View {
-        Group {
             Rectangle().fill(Theme.hairline).frame(height: 1)
-            Text("Access token (optional)").font(.body).foregroundColor(Theme.textPrimary)
-            SecureField(radio.hasToken ? "Token stored — enter a new one to replace" : "Token configured on the node", text: $token)
+            Text("Pairing key").font(.body).foregroundColor(Theme.textPrimary)
+            SecureField(radio.hasPairingKey ? "Key stored — enter a new one to replace" : "64 or more hexadecimal digits from the node", text: $key)
                 .technicalInput()
                 .sentinelField()
-            HStack(spacing: 10) {
-                Button("Save token") {
-                    radio.setToken(token)
-                    token = ""
+            AdaptiveStack(spacing: 10) {
+                Button("Save key") {
+                    if radio.setPairingKey(key) {
+                        key = ""
+                        problem = nil
+                    } else {
+                        problem = "Enter the key as at least 64 hexadecimal digits (32 bytes)."
+                    }
                 }
                 .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
-                .disabled(token.isEmpty)
-                Button("Remove") { radio.setToken("") }
+                .disabled(key.isEmpty)
+                Button("Remove") { radio.removePairingKey() }
                     .buttonStyle(SentinelButtonStyle(kind: .destructive))
-                    .disabled(!radio.hasToken)
+                    .disabled(!radio.hasPairingKey)
             }
-            Explanation("Stored in this device’s Keychain, never in settings or logs, and sent only to the node in the protocol handshake.")
+            if let problem = problem {
+                NoticeBanner(icon: "exclamationmark.triangle.fill", text: problem, tone: .warning)
+            }
+            Explanation("The node and Sentinel each prove they hold this key before the node’s capabilities are accepted, and every later message is integrity-checked. The key is stored in this device’s Keychain and never sent.")
         }
+        .onAppear { address = app.settings.radioNodeAddress }
     }
 
     private func saveAddress() {
@@ -274,74 +302,63 @@ private struct HelperSettingsCard: View {
 
     var body: some View {
         SentinelCard {
-            HStack {
+            AdaptiveStack {
                 SectionLabel(text: "Privileged helper (optional)", tone: .accent)
-                StatusPill(text: app.capabilityState(.helperLink)?.readiness == .verified ? "Verified" : "Deployment unverified",
-                           tone: app.capabilityState(.helperLink)?.readiness == .verified ? .verified : .accent)
+                StatusPill(text: helperVerified ? "Verified" : "Deployment unverified", tone: helperVerified ? .verified : .accent)
             }
             NoticeBanner(icon: "lock.shield",
-                         text: "Sentinel includes no helper and no privileged backend. This only lets the app look for a helper you installed separately. A package repository can deliver a helper’s files, but it does not provide a jailbreak or its permissions, and nothing here counts as verified until an authenticated helper answers.",
+                         text: "Sentinel includes no helper and no privileged backend. This only lets the app look for a helper you installed separately. Jailbreak markers, package managers and sideloading are not checked and would prove nothing; only an authenticated helper that answers a capability report counts.",
                          tone: .accent)
-            SettingToggle(title: "Allow helper probing",
-                          detail: "Lets you run a one-off probe below. Sentinel never probes by itself and keeps no helper connection open.",
-                          isOn: $app.settings.helperEnabled)
-            if app.settings.helperEnabled {
-                pairingControls
-                probeControls
+            Stepper(value: $app.settings.helperPort, in: 1024...65_535) {
+                Text("Loopback port: \(String(app.settings.helperPort))").font(.body).foregroundColor(Theme.textPrimary)
+            }
+            Explanation("The probe connects only to 127.0.0.1 on this device, at this port.")
+            Text("Pairing key").font(.body).foregroundColor(Theme.textPrimary)
+            SecureField(helper.hasPairingKey ? "Key stored — enter a new one to replace" : "64 or more hexadecimal digits", text: $key)
+                .technicalInput()
+                .sentinelField()
+            if let keyProblem = keyProblem {
+                NoticeBanner(icon: "exclamationmark.triangle.fill", text: keyProblem, tone: .warning)
+            }
+            AdaptiveStack(spacing: 10) {
+                Button("Save key") {
+                    if helper.setPairingKey(key) {
+                        key = ""
+                        keyProblem = nil
+                    } else {
+                        keyProblem = "Enter the key as at least 64 hexadecimal digits (32 bytes)."
+                    }
+                }
+                .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
+                .disabled(key.isEmpty)
+                Button("Remove") { helper.removePairingKey() }
+                    .buttonStyle(SentinelButtonStyle(kind: .destructive))
+                    .disabled(!helper.hasPairingKey)
+            }
+            Button(action: { helper.probe() }) {
+                Label(helper.state.isActive ? "Probing…" : "Probe for helper", systemImage: "antenna.radiowaves.left.and.right")
+            }
+            .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
+            .disabled(helper.state.isActive || !app.settings.remoteConnectionsEnabled || app.settings.previewMode)
+            if !app.settings.remoteConnectionsEnabled {
+                Explanation("Turn on Remote connections to probe. Sentinel never probes by itself and keeps no helper connection open.")
+            }
+            if let message = helper.message {
+                NoticeBanner(icon: "info.circle", text: message, tone: helper.report == nil ? .warning : .verified)
+            }
+            if let report = helper.report {
+                InfoRow(label: "Helper version", value: report.helperVersion, mono: true)
+                InfoRow(label: "Packaging (self-reported)", value: report.packaging)
+                InfoRow(label: "Recognised operations", value: report.recognizedOperations.map { $0.rawValue }.sorted().joined(separator: ", "))
+                let ignored = report.supportedOperations.filter { HelperOperation(rawValue: $0) == nil }
+                if !ignored.isEmpty {
+                    Explanation("Ignored (not in the allowlist, never enabled): \(ignored.joined(separator: ", "))")
+                }
             }
         }
     }
 
-    private var pairingControls: some View {
-        Group {
-                Rectangle().fill(Theme.hairline).frame(height: 1)
-                Stepper(value: $app.settings.helperPort, in: 1024...65_535) {
-                    Text("Loopback port: \(String(app.settings.helperPort))").font(.body).foregroundColor(Theme.textPrimary)
-                }
-                Explanation("The probe connects only to 127.0.0.1 on this device, at this port.")
-                Text("Pairing key").font(.body).foregroundColor(Theme.textPrimary)
-                SecureField(helper.hasPairingKey ? "Key stored — enter a new one to replace" : "64 or more hexadecimal digits", text: $key)
-                    .technicalInput()
-                    .sentinelField()
-                if let keyProblem = keyProblem {
-                    NoticeBanner(icon: "exclamationmark.triangle.fill", text: keyProblem, tone: .warning)
-                }
-                HStack(spacing: 10) {
-                    Button("Save key") {
-                        if helper.setPairingKey(key) {
-                            key = ""
-                            keyProblem = nil
-                        } else {
-                            keyProblem = "Enter the key as at least 64 hexadecimal digits (32 bytes)."
-                        }
-                    }
-                    .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
-                    .disabled(key.isEmpty)
-                    Button("Remove") { helper.removePairingKey() }
-                        .buttonStyle(SentinelButtonStyle(kind: .destructive))
-                        .disabled(!helper.hasPairingKey)
-                }
-                Explanation("Both sides must prove they hold this key before any request is accepted. It is stored in the Keychain.")
-        }
-    }
-
-    private var probeControls: some View {
-        Group {
-                Button(action: { helper.probe() }) {
-                    Label(helper.state.isActive ? "Probing…" : "Probe for helper", systemImage: "antenna.radiowaves.left.and.right")
-                }
-                .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
-                .disabled(helper.state.isActive || app.settings.previewMode)
-                if let message = helper.message {
-                    NoticeBanner(icon: "info.circle", text: message, tone: helper.report == nil ? .warning : .verified)
-                }
-                if let report = helper.report {
-                    InfoRow(label: "Helper version", value: report.helperVersion, mono: true)
-                    InfoRow(label: "Packaging (self-reported)", value: report.packaging)
-                    InfoRow(label: "Supported operations", value: report.supportedOperations.joined(separator: ", "))
-                }
-        }
-    }
+    private var helperVerified: Bool { app.capabilityState(.helperLink)?.readiness == .verified }
 }
 
 // MARK: - Diagnostics
@@ -355,7 +372,7 @@ private struct DiagnosticsSettingsCard: View {
         SentinelCard {
             SectionLabel(text: "Diagnostic logging")
             SettingToggle(title: "Write activity to a log file",
-                          detail: "Off: activity is kept in memory only and disappears when Sentinel closes. On: the same redacted entries are also appended to a file in the app sandbox (capped at about 500 KB) so you can export them. Credentials, tokens, cookies and passwords are replaced with [REDACTED] before anything is recorded.",
+                          detail: "Logs never leave this device unless you export them. Off: activity is kept in memory only and disappears when Sentinel closes. On: the same redacted entries are also appended to a file in the app sandbox (capped at about 500 KB) so you can export them. Credentials, tokens, cookies and passwords are replaced with [REDACTED] before anything is recorded.",
                           isOn: $app.settings.diagnosticLoggingEnabled)
             Rectangle().fill(Theme.hairline).frame(height: 1)
             InfoRow(label: "Log file", value: app.diagnosticLogBytes == 0 ? "Empty" : Formatters.bytes(app.diagnosticLogBytes))

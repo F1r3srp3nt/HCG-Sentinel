@@ -3,10 +3,19 @@ import SwiftUI
 
 struct CapabilitiesView: View {
     @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var radio: RadioModel
+    @EnvironmentObject private var helper: HelperModel
 
     var body: some View {
         Screen {
             Explanation("Each capability is tracked on four separate facts. “Verified” is set only when a real operation succeeds during this session — never by assumption, and never from a package manager, sideloading or a file on disk.")
+            SectionLabel(text: "Backends")
+            BackendCard(title: "Standard iOS", tone: .verified, status: "Always present",
+                        detail: "Supported public APIs in the app sandbox: this app’s connection details, Check My Network, capture-file inspection, Bluetooth LE discovery and test requests.")
+            BackendCard(title: "Jailbreak helper", tone: helperTone, status: helperStatus,
+                        detail: "A separately installed privileged helper, reached on 127.0.0.1 after mutual authentication. Controls such as own-device filtering appear only for operations an authenticated helper reports. Monitor mode, packet injection and radio control are never inferred from jailbreak markers and are not part of the helper interface.")
+            BackendCard(title: "External node", tone: nodeTone, status: nodeStatus,
+                        detail: "A Mac or analysis node you operate, reached over the authenticated node protocol. Nearby Wi-Fi discovery and spectrum appear only when an authenticated node offers them, and count as verified only when a non-simulated node returns valid results.")
             ForEach(CapabilityTier.allCases, id: \.self) { tier in
                 SectionLabel(text: tier.title, tone: tier == .onDevice ? .ready : tier == .externalNode ? .info : .accent)
                 Explanation(tierNote(tier))
@@ -16,6 +25,37 @@ struct CapabilitiesView: View {
             }
         }
         .navigationBarTitle("Capabilities", displayMode: .inline)
+    }
+
+    private var helperStatus: String {
+        switch helper.probeResult {
+        case .notProbed: return "Not probed"
+        case .noAnswer: return "No helper answered"
+        case .verified(let report, let date):
+            let operations = report.recognizedOperations.map { $0.rawValue }.sorted().joined(separator: ", ")
+            return "Authenticated at \(Formatters.time.string(from: date)) · \(operations.isEmpty ? "no recognised operations" : operations)"
+        }
+    }
+
+    private var helperTone: Tone {
+        if case .verified = helper.probeResult { return .verified }
+        if case .noAnswer = helper.probeResult { return .warning }
+        return .off
+    }
+
+    private var nodeStatus: String {
+        guard radio.state.isAuthenticated, let node = radio.node else {
+            if case .failed = radio.state { return "Last connection failed" }
+            return radio.state.isActive ? radio.state.title : "Not connected"
+        }
+        let features = radio.capabilities?.recognizedFeatures.sorted().joined(separator: ", ") ?? ""
+        return "Authenticated: \(node.nodeName)\(node.simulated ? " (simulated)" : "") · \(features.isEmpty ? "no recognised features" : features)"
+    }
+
+    private var nodeTone: Tone {
+        if radio.state.isAuthenticated { return radio.isSimulatedNode ? .accent : .verified }
+        if case .failed = radio.state { return .warning }
+        return .off
     }
 
     private func tierNote(_ tier: CapabilityTier) -> String {
@@ -35,7 +75,7 @@ private struct CapabilityCard: View {
 
     var body: some View {
         SentinelCard(highlight: state.readiness == .verified ? Theme.ok : nil) {
-            HStack(alignment: .top) {
+            AdaptiveStack {
                 Text(state.descriptor.title)
                     .font(.headline)
                     .foregroundColor(Theme.textPrimary)
@@ -124,5 +164,30 @@ private struct CapabilityCard: View {
         case .verified: return .verified
         case .failed: return .danger
         }
+    }
+}
+
+private struct BackendCard: View {
+    let title: String
+    let tone: Tone
+    let status: String
+    let detail: String
+
+    var body: some View {
+        SentinelCard {
+            AdaptiveStack {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(Theme.textPrimary)
+                Spacer(minLength: 0)
+                StatusPill(text: tone == .verified ? "Verified" : tone == .off ? "Unverified" : tone == .accent ? "Simulated" : "Problem", tone: tone)
+            }
+            Text(status)
+                .font(.subheadline)
+                .foregroundColor(Theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Explanation(detail)
+        }
+        .accessibilityElement(children: .combine)
     }
 }

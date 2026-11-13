@@ -12,6 +12,20 @@ struct NetworkInspectorView: View {
         Screen {
             if network.previewMode { PreviewBanner() }
             SectionLabel(text: "This app’s connection")
+            NavigationLink(destination: NetworkCheckView()) {
+                SentinelCard(highlight: Theme.cyan) {
+                    AdaptiveStack {
+                        Image(systemName: "checkmark.shield").foregroundColor(Theme.cyan)
+                        Text("Check My Network")
+                            .font(.headline)
+                            .foregroundColor(Theme.textPrimary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").foregroundColor(Theme.textSecondary)
+                    }
+                    Explanation("Run bounded DNS, HTTPS, captive-portal and proxy checks on the current connection, with evidence for each finding.")
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
             connectionCard
             SectionLabel(text: "Capture files")
             NoticeBanner(icon: "doc.text.magnifyingglass",

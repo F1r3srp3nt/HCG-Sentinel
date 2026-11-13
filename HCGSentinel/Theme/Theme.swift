@@ -3,11 +3,12 @@ import SwiftUI
 /// HCG Sentinel visual identity: obsidian surfaces, brushed-metal edges,
 /// precise cyan illumination and restrained violet highlights.
 enum Theme {
-    static let obsidian = Color(red: 0.030, green: 0.035, blue: 0.050)
-    static let obsidianRaised = Color(red: 0.060, green: 0.068, blue: 0.088)
-    static let panel = Color(red: 0.085, green: 0.095, blue: 0.120)
-    static let panelInset = Color(red: 0.050, green: 0.056, blue: 0.074)
-    static let hairline = Color.white.opacity(0.09)
+    /// Pure black, matching the SentinelHeader banner.
+    static let obsidian = Color.black
+    static let obsidianRaised = Color(red: 0.035, green: 0.040, blue: 0.050)
+    static let panel = Color(red: 0.065, green: 0.072, blue: 0.088)
+    static let panelInset = Color(red: 0.030, green: 0.034, blue: 0.042)
+    static let hairline = Color.white.opacity(0.10)
 
     static let cyan = Color(red: 0.25, green: 0.87, blue: 0.96)
     static let violet = Color(red: 0.66, green: 0.57, blue: 0.99)
@@ -25,9 +26,7 @@ enum Theme {
         gradient: Gradient(colors: [metalLight.opacity(0.55), metalDark.opacity(0.35), metalLight.opacity(0.18), metalDark.opacity(0.45)]),
         startPoint: .topLeading, endPoint: .bottomTrailing)
 
-    static let backdrop = LinearGradient(
-        gradient: Gradient(colors: [obsidianRaised, obsidian, obsidian]),
-        startPoint: .top, endPoint: .bottom)
+    static let backdrop = Color.black
 
     static func mono(_ style: Font.TextStyle = .footnote) -> Font {
         Font.system(style, design: .monospaced)
@@ -116,8 +115,9 @@ struct StatusPill: View {
         Text(text.uppercased())
             .font(.system(.caption2, design: .default).weight(.bold))
             .kerning(0.6)
-            .lineLimit(1)
-            .fixedSize()
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
             .foregroundColor(tone.color)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
@@ -130,20 +130,60 @@ struct InfoRow: View {
     let label: String
     let value: String
     var mono = false
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(label)
-                .font(.subheadline)
-                .foregroundColor(Theme.textSecondary)
-            Spacer(minLength: 8)
-            Text(value)
-                .font(mono ? Theme.mono(.subheadline) : .subheadline)
-                .foregroundColor(Theme.textPrimary)
-                .multilineTextAlignment(.trailing)
-                .fixedSize(horizontal: false, vertical: true)
+        Group {
+            if sizeCategory.isAccessibilityCategory {
+                VStack(alignment: .leading, spacing: 2) {
+                    labelText
+                    valueText.multilineTextAlignment(.leading)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    labelText.layoutPriority(1)
+                    Spacer(minLength: 8)
+                    valueText.multilineTextAlignment(.trailing)
+                }
+            }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private var labelText: some View {
+        Text(label)
+            .font(.subheadline)
+            .foregroundColor(Theme.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var valueText: some View {
+        Text(value)
+            .font(mono ? Theme.mono(.subheadline) : .subheadline)
+            .foregroundColor(Theme.textPrimary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A horizontal row at normal text sizes that becomes a vertical stack at accessibility sizes, so a title and a
+/// trailing badge never overlap or squeeze each other.
+struct AdaptiveStack<Content: View>: View {
+    var spacing: CGFloat = 8
+    let content: Content
+    @Environment(\.sizeCategory) private var sizeCategory
+
+    init(spacing: CGFloat = 8, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    var body: some View {
+        if sizeCategory.isAccessibilityCategory {
+            VStack(alignment: .leading, spacing: spacing) { content }
+        } else {
+            HStack(alignment: .center, spacing: spacing) { content }
+        }
     }
 }
 
@@ -312,7 +352,7 @@ struct SweepLine: View {
     }
 }
 
-/// Standard scrolling screen with the obsidian backdrop and a readable maximum width.
+/// Standard scrolling screen with a black background and a readable maximum width.
 struct Screen<Content: View>: View {
     let content: Content
 
@@ -323,13 +363,45 @@ struct Screen<Content: View>: View {
     var body: some View {
         ZStack {
             Theme.backdrop.ignoresSafeArea()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) { content }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        content
+                        Color.clear.frame(height: 1).id(Screen.endAnchor)
+                    }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
                     .frame(maxWidth: 860)
                     .frame(maxWidth: .infinity)
+                }
+                .onAppear {
+                    #if DEBUG
+                    // Screenshot checks in CI launch with -SentinelScrollToEnd to capture the scrolled state.
+                    if ProcessInfo.processInfo.arguments.contains("-SentinelScrollToEnd") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { proxy.scrollTo(Screen.endAnchor, anchor: .bottom) }
+                    }
+                    #endif
+                }
             }
+        }
+        .modifier(OpaqueBars())
+    }
+
+    // Generic types cannot have static stored properties.
+    static var endAnchor: String { "sentinel.screen.end" }
+}
+
+/// Opaque black navigation and tab bars, so scrolled content never shows through behind titles. iOS 14 and 15
+/// get the same result from the UIKit appearance set at launch.
+struct OpaqueBars: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) {
+            content
+                .toolbarBackground(Theme.obsidian, for: .navigationBar, .tabBar)
+                .toolbarBackground(.visible, for: .navigationBar, .tabBar)
+                .toolbarColorScheme(.dark, for: .navigationBar, .tabBar)
+        } else {
+            content
         }
     }
 }

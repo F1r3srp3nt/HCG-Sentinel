@@ -24,7 +24,7 @@ struct HCGSentinelApp: App {
     }
 
     private static func configureAppearance() {
-        let background = UIColor(red: 0.045, green: 0.052, blue: 0.070, alpha: 1)
+        let background = UIColor.black
         let text = UIColor(red: 0.94, green: 0.96, blue: 0.98, alpha: 1)
         let cyan = UIColor(red: 0.25, green: 0.87, blue: 0.96, alpha: 1)
 
@@ -68,6 +68,7 @@ struct ModelInjection: ViewModifier {
             .environmentObject(app.radio)
             .environmentObject(app.requests)
             .environmentObject(app.helper)
+            .environmentObject(app.networkCheck)
             .environmentObject(app.connection)
     }
 }

@@ -127,7 +127,7 @@ public enum BluetoothScanBlocker: Equatable {
 
     public var title: String {
         switch self {
-        case .disabledInSettings: return "Bluetooth scanning is off"
+        case .disabledInSettings: return "Scanning is off"
         case .permissionDenied: return "Bluetooth permission denied"
         case .restricted: return "Bluetooth is restricted"
         case .poweredOff: return "Bluetooth is turned off"
@@ -139,7 +139,7 @@ public enum BluetoothScanBlocker: Equatable {
     public var guidance: String {
         switch self {
         case .disabledInSettings:
-            return "Turn on “Allow Bluetooth scanning” in Sentinel’s Settings, then start a scan."
+            return "Turn on Scanning in Sentinel’s Settings, then start a scan."
         case .permissionDenied:
             return "Sentinel is not allowed to use Bluetooth. Allow it in the iOS Settings app under Sentinel › Bluetooth."
         case .restricted:

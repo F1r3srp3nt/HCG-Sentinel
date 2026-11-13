@@ -2,7 +2,6 @@ import SentinelCore
 import SwiftUI
 
 struct RadioLabView: View {
-    @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var radio: RadioModel
     @EnvironmentObject private var router: Router
 
@@ -12,12 +11,12 @@ struct RadioLabView: View {
                 PreviewBanner(detail: "The spectrum below is a fabricated curve drawn by the app. No node is connected and nothing was received.")
             }
             NoticeBanner(icon: "antenna.radiowaves.left.and.right",
-                         text: "An iPhone or iPad does not give apps general RF reception, transmission or cellular baseband access. Radio Lab only displays what an external analysis node sends it over the Sentinel Node Protocol.")
+                         text: "An iPhone or iPad does not give apps general RF reception, transmission, monitor mode, packet injection or cellular baseband access. Radio Lab only shows what an external analysis node you operate sends over an authenticated session.")
             connectionCard
             if radio.previewMode {
                 SectionLabel(text: "Spectrum (demonstration)", tone: .accent)
                 SpectrumCard(frame: PreviewData.spectrum(), label: "DEMONSTRATION DATA", tone: .accent)
-            } else if radio.state == .connected || radio.state == .streaming {
+            } else if radio.state.isAuthenticated {
                 nodeCard
                 streamCard
                 if let frame = radio.frame {
@@ -25,8 +24,9 @@ struct RadioLabView: View {
                                  label: radio.isSimulatedNode ? "SIMULATED NODE DATA — not a radio measurement" : "LIVE FROM NODE HARDWARE",
                                  tone: radio.isSimulatedNode ? .accent : .verified)
                 }
+                wifiCard
             }
-            Explanation("Protocol version \(NodeProtocol.version) is receive-side analysis only and defines no transmit operation. It is documented in docs/NODE_PROTOCOL.md.")
+            Explanation("Sentinel Node Protocol version \(NodeProtocol.version): mutual authentication with a pairing key, every message integrity-checked. Receive-side analysis only; it defines no transmit operation. See docs/NODE_PROTOCOL.md.")
         }
         .navigationBarTitle("Radio Lab", displayMode: .inline)
     }
@@ -35,23 +35,24 @@ struct RadioLabView: View {
 
     private var connectionCard: some View {
         SentinelCard(highlight: radio.state.isActive ? Theme.cyan : nil) {
-            HStack(spacing: 8) {
+            AdaptiveStack {
                 PulseDot(color: stateTone.color, active: radio.state == .streaming)
                 Text(radio.previewMode ? "Disconnected" : radio.state.title)
                     .font(.headline)
                     .foregroundColor(Theme.textPrimary)
-                Spacer()
-                StatusPill(text: radio.state.isActive && !radio.previewMode ? "Node link" : "No node", tone: stateTone)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                StatusPill(text: radio.state.isAuthenticated && !radio.previewMode ? "Authenticated" : "No node", tone: stateTone)
             }
             if radio.previewMode {
                 Explanation("Turn Preview mode off in Settings to connect to a real node.")
-            } else if !radio.enabled {
-                Explanation("The external node connection is turned off. Radio Lab stays disconnected until you enable it and enter the address of a node you operate.")
+            } else if !radio.remoteConnectionsEnabled {
+                Explanation("Remote connections are off, so Radio Lab stays disconnected. Turn them on in Settings and add your node’s address and pairing key.")
                 Button("Open Sentinel Settings") { router.open(.settings) }
                     .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
             } else {
                 InfoRow(label: "Node address", value: radio.address.isEmpty ? "Not set" : radio.address, mono: true)
-                InfoRow(label: "Access token", value: radio.hasToken ? "Stored in Keychain" : "None")
+                InfoRow(label: "Pairing key", value: radio.hasPairingKey ? "Stored in Keychain" : "Not set")
                 if case .failed(let reason) = radio.state {
                     NoticeBanner(icon: "xmark.octagon.fill", text: reason, tone: .danger)
                 }
@@ -64,7 +65,10 @@ struct RadioLabView: View {
                 } else {
                     Button(action: { radio.connect() }) { Label("Connect to node", systemImage: "link") }
                         .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
-                    Explanation("Connects once, when you tap. Sentinel does not reconnect by itself or search the network for nodes.")
+                        .disabled(!radio.canConnect)
+                    Explanation(radio.canConnect
+                                ? "Connects once, when you tap. The node must prove it holds the pairing key before anything it sends is shown."
+                                : "Add the node address and pairing key in Settings first.")
                 }
             }
         }
@@ -74,7 +78,7 @@ struct RadioLabView: View {
         if radio.previewMode { return .off }
         switch radio.state {
         case .disconnected: return .off
-        case .connecting, .handshaking: return .ready
+        case .connecting, .authenticating, .awaitingReady: return .ready
         case .connected, .streaming: return radio.isSimulatedNode ? .accent : .verified
         case .failed: return .danger
         }
@@ -84,23 +88,20 @@ struct RadioLabView: View {
 
     private var nodeCard: some View {
         SentinelCard {
-            SectionLabel(text: "Node", tone: .info)
+            SectionLabel(text: "Authenticated node", tone: .info)
             if let node = radio.node {
                 InfoRow(label: "Name", value: node.nodeName)
                 InfoRow(label: "Software", value: node.nodeSoftware)
-                InfoRow(label: "Protocol", value: "SNP v\(node.protocolVersion)", mono: true)
                 InfoRow(label: "Data source", value: node.simulated ? "Simulated (no radio)" : "Radio hardware")
                 if node.simulated {
                     NoticeBanner(icon: "theatermasks.fill",
-                                 text: "This node declares that it generates test data. Anything it streams is labelled simulated and does not verify radio reception.", tone: .accent)
+                                 text: "This node declares that it generates test data. Anything it sends is labelled simulated and verifies nothing.", tone: .accent)
                 }
             }
+            InfoRow(label: "Recognised features", value: recognizedFeatures)
             if let status = radio.status {
                 InfoRow(label: "Node state", value: status.state)
                 InfoRow(label: "Hardware present", value: status.hardwarePresent ? "Yes" : "No")
-                if let message = status.message, !message.isEmpty { Explanation(message) }
-            } else {
-                Explanation("Waiting for the node’s status…")
             }
             if let hardware = radio.capabilities?.hardware, !hardware.isEmpty {
                 ForEach(hardware) { item in
@@ -114,40 +115,96 @@ struct RadioLabView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-            } else if radio.capabilities != nil {
-                NoticeBanner(icon: "exclamationmark.triangle.fill",
-                             text: "The node reports no radio hardware, so there is no spectrum to request.", tone: .warning)
+            }
+            Explanation("Only features Sentinel recognises are listed. Anything else a node claims (for example monitor mode or injection) is ignored.")
+        }
+    }
+
+    private var recognizedFeatures: String {
+        let features = radio.capabilities?.recognizedFeatures.sorted() ?? []
+        return features.isEmpty ? "None" : features.joined(separator: ", ")
+    }
+
+    @ViewBuilder private var streamCard: some View {
+        if radio.capabilities?.recognizedFeatures.contains(NodeProtocol.spectrumFeature) == true {
+            SentinelCard {
+                SectionLabel(text: "Spectrum stream")
+                AdaptiveStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Centre (MHz)").font(.caption).foregroundColor(Theme.textSecondary)
+                        TextField("100.0", text: $radio.centerMHz).keyboardType(.decimalPad).sentinelField()
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Span (MHz)").font(.caption).foregroundColor(Theme.textSecondary)
+                        TextField("2.0", text: $radio.spanMHz).keyboardType(.decimalPad).sentinelField()
+                    }
+                }
+                .disabled(radio.state == .streaming)
+                if radio.state == .streaming {
+                    InfoRow(label: "Frames received", value: "\(radio.framesReceived)", mono: true)
+                    Button(action: { radio.stopSpectrum() }) { Label("Stop stream", systemImage: "stop.fill") }
+                        .buttonStyle(SentinelButtonStyle(kind: .destructive, fullWidth: true))
+                } else {
+                    Button(action: { radio.startSpectrum() }) { Label("Start spectrum stream", systemImage: "waveform") }
+                        .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
+                }
             }
         }
     }
 
-    private var streamCard: some View {
+    // MARK: Wi-Fi
+
+    @ViewBuilder private var wifiCard: some View {
         SentinelCard {
-            SectionLabel(text: "Spectrum stream")
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Centre (MHz)").font(.caption).foregroundColor(Theme.textSecondary)
-                    TextField("100.0", text: $radio.centerMHz).keyboardType(.decimalPad).sentinelField()
+            SectionLabel(text: "Nearby Wi-Fi (from the node)")
+            if !radio.offersWifiScan {
+                Explanation("This node does not offer Wi-Fi scanning, so nearby Wi-Fi discovery is unavailable. iOS does not let ordinary apps scan for nearby networks.")
+            } else if !radio.scanningEnabled {
+                Explanation("Scanning is off. Turn it on in Settings to request a scan from the node.")
+            } else {
+                if radio.wifiScanPending {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Waiting for the node’s scan…").font(.subheadline).foregroundColor(Theme.textPrimary)
+                        Spacer(minLength: 0)
+                    }
+                    Button("Cancel scan") { radio.cancelWifiScan() }
+                        .buttonStyle(SentinelButtonStyle(kind: .destructive, fullWidth: true))
+                } else {
+                    Button(action: { radio.requestWifiScan() }) { Label("Request Wi-Fi scan", systemImage: "wifi") }
+                        .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Span (MHz)").font(.caption).foregroundColor(Theme.textSecondary)
-                    TextField("2.0", text: $radio.spanMHz).keyboardType(.decimalPad).sentinelField()
+                if let error = radio.wifiScanError {
+                    NoticeBanner(icon: "exclamationmark.triangle.fill", text: error, tone: .warning)
                 }
             }
-            .disabled(radio.state == .streaming)
-            if radio.state == .streaming {
-                InfoRow(label: "Frames received", value: "\(radio.framesReceived)", mono: true)
-                Button(action: { radio.stopSpectrum() }) { Label("Stop stream", systemImage: "stop.fill") }
-                    .buttonStyle(SentinelButtonStyle(kind: .destructive, fullWidth: true))
-            } else {
-                Button(action: { radio.startSpectrum() }) { Label("Start spectrum stream", systemImage: "waveform") }
-                    .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
+            if let scan = radio.wifiScan {
+                StatusPill(text: radio.isSimulatedNode ? "Simulated node data" : "Reported by the node", tone: radio.isSimulatedNode ? .accent : .verified)
+                InfoRow(label: "Scanned", value: Formatters.preciseTime.string(from: Date(timeIntervalSince1970: scan.scannedAt)), mono: true)
+                InfoRow(label: "Node interface", value: scan.interface, mono: true)
+                if scan.networks.isEmpty {
+                    Explanation("The node found no networks.")
+                }
+                ForEach(scan.networks) { network in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(network.ssid ?? "Hidden network")
+                            .font(.subheadline)
+                            .foregroundColor(network.ssid == nil ? Theme.textSecondary : Theme.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("\(network.bssid) · ch \(network.channel) (\(network.frequencyMHz) MHz) · \(network.rssiDbm) dBm · \(network.security)")
+                            .font(Theme.mono(.caption))
+                            .foregroundColor(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 4)
+                    .accessibilityElement(children: .combine)
+                }
+                Explanation("Signal strength is not a distance. A listed security type is what the network advertises; it is not a judgement of the network.")
             }
         }
     }
 }
 
-/// Draws one spectrum frame. The label always states where the data came from.
 struct SpectrumCard: View {
     let frame: SpectrumFrame
     let label: String

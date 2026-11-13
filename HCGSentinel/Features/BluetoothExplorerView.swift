@@ -111,7 +111,7 @@ struct BluetoothExplorerView: View {
             case .idle:
                 Explanation(bluetooth.enabledInSettings
                             ? "Scanning runs only while this screen’s scan is started, and stops when you stop it or at the time limit."
-                            : "Bluetooth scanning is turned off in Settings. Starting a scan will explain how to enable it.")
+                            : "Scanning is turned off in Settings. Starting a scan will explain how to enable it.")
             case .waitingForRadio:
                 Explanation("iOS may be asking for Bluetooth permission. The scan starts as soon as Bluetooth reports that it is ready.")
             case .scanning(let since):

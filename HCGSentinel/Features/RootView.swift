@@ -62,6 +62,7 @@ struct SectionContent: View {
         switch section {
         case .dashboard: DashboardView()
         case .network: NetworkInspectorView()
+        case .networkCheck: NetworkCheckView()
         case .bluetooth: BluetoothExplorerView()
         case .radio: RadioLabView()
         case .requests: RequestComposerView()

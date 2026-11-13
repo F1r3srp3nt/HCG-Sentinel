@@ -77,17 +77,20 @@ jobs:
           path: simulator-app.tar.gz
           retention-days: 3
 
-  # Launches the already-built app and photographs every section. Separate from the build-and-test job and one
-  # job per device, so a slow simulator boot on a hosted runner cannot fail, or be confused with, the tests.
+  # Launches the already-built app and photographs every section: a 375-point iPhone (the iPhone X's width) at
+  # default, XXXL and an accessibility text size, at the top of each screen and scrolled to the end; and an iPad.
+  # Separate from the build-and-test job so a slow simulator boot cannot fail, or be confused with, the tests.
   screenshots:
     name: Simulator screenshots (${{ matrix.device }})
     needs: app-macos
     strategy:
       fail-fast: false
       matrix:
-        device: [iPhone, iPad]
+        include:
+          - { device: small, sizes: "large extra-extra-extra-large accessibility-extra-extra-large" }
+          - { device: iPad, sizes: "large" }
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
@@ -104,21 +107,31 @@ jobs:
         run: |
           xcrun simctl boot "$SIMULATOR_UDID" || true
           xcrun simctl bootstatus "$SIMULATOR_UDID" -b
-      - name: Install, launch and capture each section
-        timeout-minutes: 8
+          xcrun simctl install "$SIMULATOR_UDID" HCGSentinel.app
+      - name: Capture each section at each text size
+        timeout-minutes: 20
         run: |
           set -x
           mkdir -p screenshots
-          xcrun simctl install "$SIMULATOR_UDID" HCGSentinel.app
-          xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel
-          sleep 8
-          xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/${{ matrix.device }}-dashboard.png"
-          for section in network bluetooth radio requests settings capabilities; do
-            xcrun simctl openurl "$SIMULATOR_UDID" "hcgsentinel://open/$section"
-            sleep 4
-            xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/${{ matrix.device }}-$section.png"
+          shoot() { # size, pass, extra launch arguments...
+            local size="$1" pass="$2"; shift 2
+            xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+            xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel "$@"
+            sleep 7
+            xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-$pass-dashboard.png"
+            for section in networkcheck network bluetooth radio requests settings capabilities; do
+              xcrun simctl openurl "$SIMULATOR_UDID" "hcgsentinel://open/$section"
+              sleep 4
+              xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-$pass-$section.png"
+            done
+          }
+          for size in ${{ matrix.sizes }}; do
+            xcrun simctl ui "$SIMULATOR_UDID" content_size "$size"
+            shoot "$size" top
+            shoot "$size" end -SentinelScrollToEnd
           done
           xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+          for file in screenshots/*.png; do sips -Z 1400 "$file" >/dev/null; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -39,6 +39,18 @@
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<!-- Check My Network fetches Apple's captive-network test page over plain HTTP on purpose, to detect
+			     rewriting of unencrypted traffic. This is the only plain-HTTP host allowed outside the local network. -->
+			<key>captive.apple.com</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<false/>
+			</dict>
+		</dict>
 	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Sentinel uses Bluetooth only when you start a scan in Bluetooth Explorer, to list nearby Bluetooth LE devices that are advertising.</string>

@@ -28,14 +28,14 @@ final class BluetoothModel: ObservableObject {
 
     func apply(_ settings: SentinelSettings) {
         previewMode = settings.previewMode
-        enabledInSettings = settings.bluetoothScanningEnabled
-        controller.isEnabledInSettings = settings.bluetoothScanningEnabled && !settings.previewMode
+        enabledInSettings = settings.scanningEnabled
+        controller.isEnabledInSettings = settings.scanningEnabled && !settings.previewMode
         controller.allowDuplicates = settings.bluetoothContinuousUpdates
         controller.autoStopInterval = TimeInterval(settings.bluetoothAutoStopSeconds)
         if !controller.isEnabledInSettings && controller.state.isActive {
-            controller.stop(reason: "Scan stopped because scanning was turned off")
+            controller.stop(reason: "Bluetooth scan stopped because Scanning was turned off")
         }
-        if settings.bluetoothScanningEnabled, case .blocked(.disabledInSettings) = controller.state {
+        if settings.scanningEnabled, case .blocked(.disabledInSettings) = controller.state {
             controller.stop()
         }
     }
@@ -238,15 +238,19 @@ final class NetworkModel: ObservableObject {
 
 final class RadioModel: ObservableObject {
     @Published private(set) var state: RadioNodeState = .disconnected
-    @Published private(set) var node: NodeHelloAck?
+    @Published private(set) var node: NodeInfo?
     @Published private(set) var capabilities: NodeCapabilities?
     @Published private(set) var status: NodeStatus?
     @Published private(set) var frame: SpectrumFrame?
     @Published private(set) var framesReceived = 0
-    @Published private(set) var enabled = false
+    @Published private(set) var wifiScan: WifiScanResult?
+    @Published private(set) var wifiScanPending = false
+    @Published private(set) var wifiScanError: String?
+    @Published private(set) var remoteConnectionsEnabled = false
+    @Published private(set) var scanningEnabled = false
     @Published private(set) var previewMode = false
     @Published private(set) var address = ""
-    @Published private(set) var hasToken = Keychain.has(.nodeToken)
+    @Published private(set) var hasPairingKey = Keychain.has(.nodePairingKey)
     @Published var errorMessage: String?
     @Published var centerMHz = "100.0"
     @Published var spanMHz = "2.0"
@@ -262,45 +266,76 @@ final class RadioModel: ObservableObject {
         self.registry = registry
         session.onChange = { [weak self] in self?.sync() }
         session.onLog = { [weak log] message, severity in log?.record(.radio, message, severity: severity) }
-        session.onLinkVerified = { [weak registry] ack in
-            registry?.setEnvironment(.radioNodeLink, .supported)
-            let kind = ack.simulated ? " (simulated data source)" : ""
-            registry?.recordVerified(.radioNodeLink, evidence: "Protocol v\(ack.protocolVersion) handshake completed with node “\(ack.nodeName)”\(kind)")
-            if ack.simulated {
-                registry?.setEnvironment(.radioSpectrum, .unknown("The connected node is a simulator, not radio hardware. Its data is labelled simulated and proves nothing about real reception."))
+        session.onLinkVerified = { [weak registry] node, capabilities in
+            guard let registry = registry else { return }
+            registry.setEnvironment(.radioNodeLink, .supported)
+            let kind = node.simulated ? " (simulated data source)" : ""
+            registry.recordVerified(.radioNodeLink, evidence: "Authenticated protocol v\(NodeProtocol.version) handshake with node “\(node.nodeName)”\(kind)")
+            let features = capabilities.recognizedFeatures
+            if node.simulated {
+                let reason = "The connected node is a simulator. Its data is labelled simulated and proves nothing about real hardware."
+                registry.setEnvironment(.radioSpectrum, .unknown(reason))
+                registry.setEnvironment(.nearbyWifiDiscovery, .unknown(reason))
+            } else {
+                registry.setEnvironment(.radioSpectrum, features.contains(NodeProtocol.spectrumFeature)
+                    ? .unknown("The node offers spectrum; confirmed by the first valid frame.")
+                    : .unsupported("The connected node does not offer the spectrum feature."))
+                registry.setEnvironment(.nearbyWifiDiscovery, features.contains(NodeProtocol.wifiScanFeature)
+                    ? .unknown("The node offers Wi-Fi scanning; confirmed by the first valid scan.")
+                    : .unsupported("The connected node does not offer Wi-Fi scanning."))
             }
         }
         session.onHardwareSpectrumVerified = { [weak registry] in
             registry?.setEnvironment(.radioSpectrum, .supported)
-            registry?.recordVerified(.radioSpectrum, evidence: "A valid spectrum frame arrived from a node reporting real radio hardware")
+            registry?.recordVerified(.radioSpectrum, evidence: "A valid spectrum frame arrived from an authenticated node reporting real radio hardware")
+        }
+        session.onWifiScanVerified = { [weak registry] scan in
+            registry?.setEnvironment(.nearbyWifiDiscovery, .supported)
+            registry?.recordVerified(.nearbyWifiDiscovery, evidence: "An authenticated, non-simulated node returned a valid scan of \(scan.networks.count) network(s)")
         }
     }
 
     var isSimulatedNode: Bool { session.isSimulatedNode }
+    var canConnect: Bool { remoteConnectionsEnabled && !previewMode && hasPairingKey && !address.isEmpty }
+    var offersWifiScan: Bool { session.supports(NodeProtocol.wifiScanFeature) }
 
     func apply(_ settings: SentinelSettings) {
-        enabled = settings.radioNodeEnabled
+        remoteConnectionsEnabled = settings.remoteConnectionsEnabled
+        scanningEnabled = settings.scanningEnabled
         previewMode = settings.previewMode
         address = settings.radioNodeAddress
-        if (!enabled || previewMode) && session.state.isActive {
-            session.disconnect(reason: "Node session closed because the external node was turned off")
+        if (!remoteConnectionsEnabled || previewMode) && session.state.isActive {
+            session.disconnect(reason: "Node session closed because Remote connections was turned off")
+        }
+        if (!scanningEnabled || previewMode) && session.isWifiScanPending {
+            session.cancelWifiScan()
+            log.record(.radio, "Wi-Fi scan request cancelled because Scanning was turned off")
         }
     }
 
-    func setToken(_ token: String) {
-        if token.isEmpty {
-            Keychain.delete(.nodeToken)
-        } else {
-            Keychain.write(Data(token.utf8), for: .nodeToken)
-        }
-        hasToken = Keychain.has(.nodeToken)
+    /// Stores the node's pairing key (hex). Returns false when it is not at least 32 bytes of hex.
+    func setPairingKey(_ text: String) -> Bool {
+        guard let key = NodeAuth.pairingKey(fromHex: text) else { return false }
+        Keychain.write(Data(key), for: .nodePairingKey)
+        hasPairingKey = Keychain.has(.nodePairingKey)
+        return hasPairingKey
+    }
+
+    func removePairingKey() {
+        Keychain.delete(.nodePairingKey)
+        hasPairingKey = false
+        if session.state.isActive { session.disconnect(reason: "Node session closed because the pairing key was removed") }
     }
 
     func connect() {
-        guard enabled, !previewMode else { return }
+        guard remoteConnectionsEnabled, !previewMode else { return }
         errorMessage = nil
+        guard let key = Keychain.read(.nodePairingKey) else {
+            errorMessage = RadioNodeError.pairingKeyRequired.userMessage
+            return
+        }
         do {
-            try session.connect(to: address, authToken: Keychain.readString(.nodeToken))
+            try session.connect(to: address, pairingKey: [UInt8](key))
         } catch {
             errorMessage = (error as? RadioNodeError)?.userMessage ?? "Could not connect."
         }
@@ -331,25 +366,50 @@ final class RadioModel: ObservableObject {
         session.stopSpectrum()
     }
 
+    func requestWifiScan() {
+        errorMessage = nil
+        guard scanningEnabled, !previewMode else {
+            errorMessage = "Turn on Scanning in Settings to request a Wi-Fi scan."
+            return
+        }
+        do {
+            try session.requestWifiScan()
+        } catch {
+            errorMessage = (error as? RadioNodeError)?.userMessage ?? "The scan could not be requested."
+        }
+    }
+
+    func cancelWifiScan() {
+        session.cancelWifiScan()
+    }
+
+    var isWifiScanPending: Bool { session.isWifiScanPending }
+
     func tick() {
         session.tick()
     }
 
     private func sync() {
         let wasActive = state.isActive
+        let wasAuthenticated = state.isAuthenticated
         if state != session.state { state = session.state }
         if node != session.node { node = session.node }
         if capabilities != session.capabilities { capabilities = session.capabilities }
         if status != session.status { status = session.status }
         frame = session.latestFrame
         framesReceived = session.framesReceived
+        if wifiScan != session.latestWifiScan { wifiScan = session.latestWifiScan }
+        wifiScanPending = session.isWifiScanPending
+        wifiScanError = session.wifiScanError
         if case .failed(let reason) = session.state, wasActive {
             registry.recordFailure(.radioNodeLink, reason: reason)
             registry.resetVerification(.radioSpectrum)
-        } else if session.state == .disconnected, wasActive {
+            registry.resetVerification(.nearbyWifiDiscovery)
+        } else if session.state == .disconnected, wasActive || wasAuthenticated {
             // A closed session is no longer evidence that a node is reachable.
             registry.resetVerification(.radioNodeLink)
             registry.resetVerification(.radioSpectrum)
+            registry.resetVerification(.nearbyWifiDiscovery)
         }
     }
 }
@@ -359,9 +419,11 @@ final class RadioModel: ObservableObject {
 final class RequestModel: ObservableObject {
     @Published var draft = RequestDraft.template
     @Published private(set) var state: RequestComposer.State = .idle
-    @Published private(set) var endpoint: TestEndpoint?
-    @Published private(set) var endpointProblem: String?
+    @Published private(set) var endpoints: [TestEndpoint] = []
+    @Published private(set) var endpointProblems: [String] = []
+    @Published private(set) var remoteConnectionsEnabled = false
     @Published private(set) var previewMode = false
+    @Published var bodyFormat: ResponseBodyFormat = .text
 
     private let composer: RequestComposer
     private let registry: CapabilityRegistry
@@ -378,51 +440,54 @@ final class RequestModel: ObservableObject {
             }
         }
         composer.onResponse = { [weak self] response in
-            guard let self = self, let endpoint = self.endpoint else { return }
-            self.registry.recordVerified(.requestComposer,
-                                         evidence: "\(endpoint.host) answered a Sentinel request with HTTP \(response.statusCode)")
+            guard let self = self else { return }
+            self.bodyFormat = ResponseFormatter.suggestedFormat(for: response.body)
+            self.registry.recordVerified(.requestComposer, evidence: "A test endpoint answered a Sentinel request with HTTP \(response.statusCode)")
         }
     }
 
     var isSending: Bool { composer.isSending }
+    var canSend: Bool { remoteConnectionsEnabled && !previewMode && !endpoints.isEmpty && !isSending }
 
     func apply(_ settings: SentinelSettings) {
         previewMode = settings.previewMode
         timeout = TimeInterval(settings.requestTimeoutSeconds)
-        let text = settings.testEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        var resolved: TestEndpoint?
-        var problem: String?
-        if !text.isEmpty {
-            do {
-                resolved = try TestEndpoint(string: text)
-            } catch {
-                problem = (error as? RequestValidationError)?.userMessage ?? "The endpoint is not valid."
-            }
-        }
-        if resolved != endpoint {
+        let parsed = TestEndpoint.parseList(settings.testEndpoints)
+        if parsed.endpoints != endpoints {
             if composer.isSending { composer.cancel() }
-            endpoint = resolved
+            endpoints = parsed.endpoints
             registry.resetVerification(.requestComposer)
         }
-        endpointProblem = problem
+        endpointProblems = parsed.problems
+        let wasEnabled = remoteConnectionsEnabled
+        remoteConnectionsEnabled = settings.remoteConnectionsEnabled
+        if wasEnabled && !remoteConnectionsEnabled && composer.isSending {
+            composer.cancel()
+        }
+        // A fresh draft starts at the primary endpoint's root.
+        if draft.url == "/", let primary = endpoints.first {
+            draft.url = primary.displayString + "/"
+        }
     }
 
     /// Validates the draft and describes exactly what Send would transmit.
     func prepare() -> Result<PreparedRequest, RequestValidationError> {
         do {
-            return .success(try RequestBuilder.prepare(draft, endpoint: endpoint))
+            return .success(try RequestBuilder.prepare(draft, endpoints: endpoints))
         } catch {
-            return .failure((error as? RequestValidationError) ?? .invalidPath)
+            return .failure((error as? RequestValidationError) ?? .invalidURL)
         }
     }
 
     var changes: [RequestChange] {
-        RequestPreview.changes(from: .template, to: draft)
+        var baseline = RequestDraft.template
+        if let primary = endpoints.first { baseline.url = primary.displayString + "/" }
+        return RequestPreview.changes(from: baseline, to: draft)
     }
 
     func send() {
-        guard !previewMode else { return }
-        composer.send(draft, endpoint: endpoint, timeout: timeout)
+        guard canSend else { return }
+        composer.send(draft, endpoints: endpoints, timeout: timeout)
     }
 
     func cancel() {
@@ -431,6 +496,7 @@ final class RequestModel: ObservableObject {
 
     func resetDraft() {
         draft = .template
+        if let primary = endpoints.first { draft.url = primary.displayString + "/" }
         composer.reset()
     }
 }
@@ -438,17 +504,27 @@ final class RequestModel: ObservableObject {
 // MARK: - Privileged helper
 
 final class HelperModel: ObservableObject {
+    enum ProbeResult: Equatable {
+        case notProbed
+        case noAnswer(String)
+        case verified(HelperCapabilityReport, Date)
+    }
+
     @Published private(set) var state: HelperClientState = .disconnected
     @Published private(set) var report: HelperCapabilityReport?
-    @Published private(set) var enabled = false
+    @Published private(set) var probeResult: ProbeResult = .notProbed
+    @Published private(set) var remoteConnectionsEnabled = false
+    @Published private(set) var previewMode = false
     @Published private(set) var hasPairingKey = Keychain.has(.helperPairingKey)
     @Published private(set) var port = 47_655
+    @Published private(set) var operationInFlight: HelperOperation?
     @Published var message: String?
 
     private let transport: LoopbackHelperTransport
     private let client: HelperClient
     private let log: ActivityLog
     private let registry: CapabilityRegistry
+    private var pending: (operation: HelperOperation, body: Data, completion: (Result<Data, HelperClientError>) -> Void)?
 
     init(log: ActivityLog, registry: CapabilityRegistry) {
         let transport = LoopbackHelperTransport(port: 47_655)
@@ -458,33 +534,49 @@ final class HelperModel: ObservableObject {
         self.registry = registry
         client.onChange = { [weak self] in self?.sync() }
         client.onLog = { [weak log] message, severity in log?.record(.helper, message, severity: severity) }
-        client.onVerified = { [weak registry] report in
-            registry?.setEnvironment(.helperLink, .supported)
-            registry?.recordVerified(.helperLink, evidence: "An authenticated helper session answered a capability report (helper \(report.helperVersion), \(report.packaging))")
+    }
+
+    /// Operations the last authenticated helper report listed that Sentinel recognises.
+    var verifiedOperations: Set<HelperOperation> {
+        if case .verified(let report, _) = probeResult { return report.recognizedOperations }
+        return []
+    }
+
+    var canUseFiltering: Bool { remoteConnectionsEnabled && !previewMode && verifiedOperations.contains(.setFilterRules) }
+
+    /// Why own-device filtering cannot be used right now, or nil when it can.
+    var filteringRequirement: String? {
+        if previewMode { return "Preview mode is on." }
+        if !remoteConnectionsEnabled { return "Turn on Remote connections in Settings. Sentinel only contacts a helper when it is on." }
+        if !hasPairingKey { return "Add the pairing key from your helper installation in Settings, then probe for the helper." }
+        switch probeResult {
+        case .notProbed:
+            return "Probe for the helper in Settings. Filtering is offered only after an authenticated helper reports that it can apply rules."
+        case .noAnswer(let reason):
+            return "No helper answered the last probe (\(reason)). Filtering needs a separately installed privileged helper; Sentinel does not include one, and none has been built yet."
+        case .verified(let report, _):
+            if !report.recognizedOperations.contains(.setFilterRules) {
+                return "The helper authenticated but does not report setFilterRules, so it cannot apply filter rules."
+            }
+            return nil
         }
     }
 
     func apply(_ settings: SentinelSettings) {
-        enabled = settings.helperEnabled && !settings.previewMode
+        remoteConnectionsEnabled = settings.remoteConnectionsEnabled
+        previewMode = settings.previewMode
         port = settings.helperPort
         transport.port = UInt16(clamping: settings.helperPort)
-        if !enabled && client.state.isActive { client.disconnect() }
+        if (!remoteConnectionsEnabled || previewMode) && client.state.isActive {
+            client.disconnect()
+            log.record(.helper, "Helper session closed because Remote connections was turned off")
+        }
     }
 
     /// Accepts the pairing key as hexadecimal (at least 64 digits). Returns false when it is not valid.
     func setPairingKey(_ text: String) -> Bool {
-        let cleaned = text.filter { !$0.isWhitespace }
-        guard cleaned.count >= HelperProtocol.minimumKeyBytes * 2, cleaned.count % 2 == 0,
-              cleaned.allSatisfy({ $0.isHexDigit }) else { return false }
-        var bytes: [UInt8] = []
-        var index = cleaned.startIndex
-        while index < cleaned.endIndex {
-            let next = cleaned.index(index, offsetBy: 2)
-            guard let byte = UInt8(cleaned[index..<next], radix: 16) else { return false }
-            bytes.append(byte)
-            index = next
-        }
-        Keychain.write(Data(bytes), for: .helperPairingKey)
+        guard let key = NodeAuth.pairingKey(fromHex: text) else { return false }
+        Keychain.write(Data(key), for: .helperPairingKey)
         hasPairingKey = Keychain.has(.helperPairingKey)
         return hasPairingKey
     }
@@ -492,28 +584,79 @@ final class HelperModel: ObservableObject {
     func removePairingKey() {
         Keychain.delete(.helperPairingKey)
         hasPairingKey = false
+        probeResult = .notProbed
+        registry.resetVerification(.helperLink)
+        registry.resetVerification(.trafficFiltering)
         if client.state.isActive { client.disconnect() }
     }
 
     /// One user-triggered attempt: connect on loopback, authenticate, request a capability report, disconnect.
     func probe() {
-        guard enabled, !client.state.isActive else { return }
-        message = nil
-        report = nil
-        guard let key = Keychain.read(.helperPairingKey) else {
-            message = "Add the pairing key shown by your helper installation first."
-            return
-        }
-        log.record(.helper, "Probing for a helper on 127.0.0.1:\(port)")
+        run(nil)
+    }
+
+    /// Sends filter rules through a verified helper. Never called unless `canUseFiltering`.
+    func applyFilterRules(_ rules: [FilterRule], completion: @escaping (String) -> Void) {
+        guard canUseFiltering else { return completion(filteringRequirement ?? "Filtering is not available.") }
+        let body: Data
         do {
-            try client.connect(pairingKey: [UInt8](key))
+            body = try JSONEncoder().encode(FilterRulesParameters(rules: rules))
+            try HelperRequestValidator.validate(operation: HelperOperation.setFilterRules.rawValue, body: body)
         } catch {
-            message = (error as? HelperClientError)?.userMessage ?? "The helper could not be contacted."
+            return completion("The rules are not valid: addresses must be IP literals (optionally with /prefix), ports 1–65535, at most \(HelperRequestValidator.maxFilterRules) rules.")
         }
+        run((.setFilterRules, body, { [weak self] result in
+            switch result {
+            case .success:
+                self?.registry.setEnvironment(.trafficFiltering, .supported)
+                self?.registry.recordVerified(.trafficFiltering, evidence: "The authenticated helper accepted \(rules.count) filter rule(s)")
+                completion("The helper accepted \(rules.count) rule(s).")
+            case .failure(let error):
+                self?.registry.recordFailure(.trafficFiltering, reason: error.userMessage)
+                completion(error.userMessage)
+            }
+        }))
+    }
+
+    func clearFilterRules(completion: @escaping (String) -> Void) {
+        guard canUseFiltering, verifiedOperations.contains(.clearFilterRules) else {
+            return completion(filteringRequirement ?? "The helper does not report clearFilterRules.")
+        }
+        run((.clearFilterRules, Data(), { result in
+            switch result {
+            case .success: completion("The helper removed its filter rules.")
+            case .failure(let error): completion(error.userMessage)
+            }
+        }))
     }
 
     func disconnect() {
         client.disconnect()
+    }
+
+    private func run(_ operation: (HelperOperation, Data, (Result<Data, HelperClientError>) -> Void)?) {
+        guard remoteConnectionsEnabled, !previewMode, !client.state.isActive else { return }
+        message = nil
+        guard let key = Keychain.read(.helperPairingKey) else {
+            message = "Add the pairing key shown by your helper installation first."
+            return
+        }
+        pending = operation.map { (operation: $0.0, body: $0.1, completion: $0.2) }
+        operationInFlight = operation?.0
+        log.record(.helper, operation == nil ? "Probing for a helper on 127.0.0.1:\(port)" : "Contacting the helper on 127.0.0.1:\(port) for \(operation!.0.rawValue)")
+        do {
+            try client.connect(pairingKey: [UInt8](key))
+        } catch {
+            message = (error as? HelperClientError)?.userMessage ?? "The helper could not be contacted."
+            finishPending(.failure(.notReady))
+        }
+    }
+
+    private func finishPending(_ result: Result<Data, HelperClientError>) {
+        let waiting = pending
+        pending = nil
+        operationInFlight = nil
+        waiting?.completion(result)
     }
 
     private func sync() {
@@ -521,21 +664,46 @@ final class HelperModel: ObservableObject {
         state = client.state
         switch client.state {
         case .ready where previous != .ready:
+            // Always refresh the capability report first; controls depend on what the helper reports now.
             client.reportCapabilities { [weak self] result in
                 guard let self = self else { return }
                 switch result {
                 case .success(let report):
                     self.report = report
-                    self.message = "Helper verified. It reports \(report.supportedOperations.count) supported operation(s)."
+                    self.probeResult = .verified(report, Date())
+                    self.registry.setEnvironment(.helperLink, .supported)
+                    self.registry.recordVerified(.helperLink, evidence: "An authenticated helper session answered a capability report (helper \(report.helperVersion), \(report.packaging))")
+                    self.registry.setEnvironment(.trafficFiltering, report.recognizedOperations.contains(.setFilterRules)
+                        ? .unknown("The helper reports setFilterRules; confirmed when it accepts a rule set.")
+                        : .unsupported("The authenticated helper does not report setFilterRules."))
+                    let recognized = report.recognizedOperations.map { $0.rawValue }.sorted().joined(separator: ", ")
+                    self.message = "Helper verified. Recognised operations: \(recognized.isEmpty ? "none" : recognized)."
+                    if let pending = self.pending {
+                        guard report.recognizedOperations.contains(pending.operation) else {
+                            self.finishPending(.failure(.operationNotGranted))
+                            self.client.disconnect()
+                            return
+                        }
+                        self.client.request(pending.operation, body: pending.body) { [weak self] result in
+                            self?.finishPending(result)
+                            self?.client.disconnect()
+                        }
+                    } else {
+                        self.client.disconnect()
+                    }
                 case .failure(let error):
                     self.message = error.userMessage
                     self.registry.recordFailure(.helperLink, reason: error.userMessage)
+                    self.finishPending(.failure(error))
+                    self.client.disconnect()
                 }
-                self.client.disconnect()
             }
         case .failed(let reason) where previous.isActive:
             message = reason
+            probeResult = .noAnswer(reason)
             registry.recordFailure(.helperLink, reason: reason)
+            registry.setEnvironment(.trafficFiltering, .unsupported("No authenticated helper is available."))
+            finishPending(.failure(.connectionLost(reason)))
         default:
             break
         }

@@ -9,9 +9,16 @@ struct DashboardView: View {
     @EnvironmentObject private var network: NetworkModel
     @EnvironmentObject private var radio: RadioModel
     @EnvironmentObject private var requests: RequestModel
+    @EnvironmentObject private var check: NetworkCheckModel
+    @Environment(\.sizeCategory) private var sizeCategory
 
     private let statusColumns = [GridItem(.adaptive(minimum: 300), spacing: 14, alignment: .top)]
-    private let tileColumns = [GridItem(.adaptive(minimum: 150), spacing: 12, alignment: .top)]
+
+    /// Two tiles per row on phones at normal sizes; one per row at accessibility sizes so titles never collide.
+    private var tileColumns: [GridItem] {
+        let minimum: CGFloat = sizeCategory.isAccessibilityCategory ? 280 : 150
+        return [GridItem(.adaptive(minimum: minimum), spacing: 12, alignment: .top)]
+    }
 
     var body: some View {
         Screen {
@@ -27,6 +34,7 @@ struct DashboardView: View {
             }
             SectionLabel(text: "Quick access")
             LazyVGrid(columns: tileColumns, spacing: 12) {
+                tile(.networkCheck, status: checkStatus)
                 tile(.network, status: networkStatus)
                 tile(.bluetooth, status: bluetoothStatus)
                 tile(.radio, status: radioStatus)
@@ -50,19 +58,23 @@ struct DashboardView: View {
     // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("HCG SENTINEL")
-                    .font(.system(.title2, design: .default).weight(.bold))
-                    .kerning(3)
-                    .foregroundColor(Theme.textPrimary)
-                Spacer()
+        VStack(alignment: .leading, spacing: 10) {
+            Image("SentinelHeader")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: 560)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel("HCG Sentinel")
+                .accessibilityAddTraits(.isHeader)
+            SweepLine()
+            AdaptiveStack {
+                Text("Authorised testing of your own devices, networks and services.")
+                    .font(.footnote)
+                    .foregroundColor(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
                 StatusPill(text: app.activeOperations.isEmpty ? "Idle" : "Active", tone: app.activeOperations.isEmpty ? .off : .ready)
             }
-            SweepLine()
-            Text("Authorised testing of your own devices, networks and services.")
-                .font(.footnote)
-                .foregroundColor(Theme.textSecondary)
         }
         .padding(.bottom, 2)
     }
@@ -108,11 +120,11 @@ struct DashboardView: View {
     private var capabilityCard: some View {
         Button(action: { router.open(.capabilities) }) {
             SentinelCard {
-                HStack {
+                HStack(alignment: .top) {
                     SectionLabel(text: "Verified capabilities", tone: .verified)
                     Image(systemName: "chevron.right").font(.footnote).foregroundColor(Theme.textSecondary)
                 }
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                AdaptiveStack(spacing: 6) {
                     Text("\(app.verifiedCapabilityCount)")
                         .font(.system(.largeTitle, design: .rounded).weight(.semibold))
                         .foregroundColor(app.verifiedCapabilityCount > 0 ? Theme.ok : Theme.textPrimary)
@@ -201,6 +213,12 @@ struct DashboardView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
+    private var checkStatus: String {
+        if check.isRunning { return "Checking…" }
+        if let report = check.report { return report.headline }
+        return "Not run yet"
+    }
+
     private var networkStatus: String {
         network.isParsing ? "Reading a capture file…" : "\(network.saved.count) saved capture(s)"
     }
@@ -217,12 +235,14 @@ struct DashboardView: View {
 
     private var radioStatus: String {
         if app.settings.previewMode { return "Preview data" }
-        return radio.enabled ? radio.state.title : "Disconnected · node off"
+        return radio.remoteConnectionsEnabled ? radio.state.title : "Disconnected · remote connections off"
     }
 
     private var requestStatus: String {
-        if let endpoint = requests.endpoint { return endpoint.host }
-        return "No test endpoint selected"
+        if let endpoint = requests.endpoints.first {
+            return requests.endpoints.count == 1 ? endpoint.host : "\(endpoint.host) +\(requests.endpoints.count - 1)"
+        }
+        return "No test endpoint added"
     }
 
     // MARK: Activity
