@@ -23,7 +23,7 @@ final class NetworkCheckLiveTests: XCTestCase {
     }
 
     private func log(_ report: AssessmentReport) {
-        print("CHECK-MY-NETWORK headline: \(report.headline) | cancelled: \(report.cancelled) | steps \(report.completedSteps)/\(report.totalSteps) | \(Int(report.finishedAt.timeIntervalSince(report.startedAt)))s")
+        print("CHECK-MY-NETWORK headline: \(report.headline) | cancelled: \(report.cancelled) | steps \(report.completedSteps)/\(report.totalSteps) | \(String(format: "%.2f", report.finishedAt.timeIntervalSince(report.startedAt)))s")
         for finding in report.findings {
             print("CHECK-MY-NETWORK [\(finding.kind.rawValue)] \(finding.id): \(finding.title)")
             for line in finding.evidence { print("CHECK-MY-NETWORK     evidence: \(line)") }
@@ -65,16 +65,23 @@ final class NetworkCheckLiveTests: XCTestCase {
 
     func testCancelDuringTheLiveCheck() throws {
         let assessment = NetworkAssessment(probe: PlatformNetworkProbe())
+        // A fast network finishes all steps in under a second, so cancel from the state-change hook the moment
+        // the first network step starts, while its request is genuinely in flight.
+        var cancelledAt: Date?
+        var cancelDuration: TimeInterval = 0
+        assessment.onChange = { [unowned assessment] in
+            guard cancelledAt == nil, case .running(let step, _, _) = assessment.state, step.usesNetwork else { return }
+            cancelledAt = Date()
+            DispatchQueue.main.async {
+                let started = Date()
+                assessment.cancel()
+                cancelDuration = Date().timeIntervalSince(started)
+            }
+        }
         assessment.start()
-        let reachedNetwork = expectation(for: NSPredicate { _, _ in
-            if case .running(let step, _, _) = assessment.state { return step.usesNetwork }
-            return false
-        }, evaluatedWith: nil)
-        wait(for: [reachedNetwork], timeout: 20)
-        let started = Date()
-        assessment.cancel()
-        XCTAssertLessThan(Date().timeIntervalSince(started), 1, "cancel returns immediately")
-        guard case .finished(let report) = assessment.state else { return XCTFail("expected a finished report") }
+        let report = try XCTUnwrap(finish(assessment, timeout: 20), "the cancelled check should finish at once")
+        XCTAssertNotNil(cancelledAt, "a network step should have started")
+        XCTAssertLessThan(cancelDuration, 1, "cancel returns immediately")
         log(report)
         XCTAssertTrue(report.cancelled)
         XCTAssertTrue(report.headline.hasPrefix("Check cancelled"))
