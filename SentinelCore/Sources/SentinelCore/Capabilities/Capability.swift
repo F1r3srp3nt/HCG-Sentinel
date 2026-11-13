@@ -23,6 +23,8 @@ public enum CapabilityID: String, CaseIterable, Codable {
     case captureFileInspection
     case bluetoothDiscovery
     case requestComposer
+    case networkAssessment
+    case nearbyWifiDiscovery
     case radioNodeLink
     case radioSpectrum
     case macDebugProxy

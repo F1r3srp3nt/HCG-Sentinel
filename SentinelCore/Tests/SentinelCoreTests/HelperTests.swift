@@ -124,6 +124,16 @@ final class HelperProtocolTests: XCTestCase {
         XCTAssertEqual(client.capabilityReport, report)
     }
 
+    func testUnknownOperationsInAReportNeverEnableControls() throws {
+        let report = HelperCapabilityReport(helperVersion: "x", packaging: "rootless",
+                                            supportedOperations: ["reportCapabilities", "monitorMode", "packetInjection",
+                                                                  "radioControl", "setFilterRules", "exec"])
+        XCTAssertEqual(report.recognizedOperations, [.reportCapabilities, .setFilterRules])
+        let markersOnly = PrivilegeAssessment(hints: [.packageManagerPresent, .filesystemMarker], helperSessionAuthenticated: false,
+                                              helperReportedCapabilities: false)
+        XCTAssertFalse(markersOnly.isPrivilegedAccessVerified, "jailbreak markers never stand in for a helper's report")
+    }
+
     func testWrongPairingKeyIsRejectedByClient() throws {
         let (client, transport) = makePair(serverKey: [UInt8](repeating: 0x13, count: 32))
         try client.connect(pairingKey: key)

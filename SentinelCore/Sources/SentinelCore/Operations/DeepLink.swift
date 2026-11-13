@@ -6,7 +6,7 @@ import Foundation
 /// sends a request, connects to anything or changes a setting, so a shortcut
 /// surface such as Nexus can never trigger an operation by itself.
 public enum SentinelSection: String, CaseIterable, Identifiable {
-    case dashboard, network, bluetooth, radio, requests, capabilities, settings
+    case dashboard, network, networkCheck, bluetooth, radio, requests, capabilities, settings
 
     public var id: String { rawValue }
 
@@ -14,6 +14,7 @@ public enum SentinelSection: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "Dashboard"
         case .network: return "Network Inspector"
+        case .networkCheck: return "Check My Network"
         case .bluetooth: return "Bluetooth Explorer"
         case .radio: return "Radio Lab"
         case .requests: return "Request Composer"
@@ -31,7 +32,8 @@ public enum DeepLink {
               url.query == nil, url.fragment == nil, url.user == nil else { return nil }
         let parts = url.path.split(separator: "/")
         guard parts.count == 1 else { return nil }
-        return SentinelSection(rawValue: String(parts[0]).lowercased())
+        let name = String(parts[0]).lowercased()
+        return SentinelSection.allCases.first { $0.rawValue.lowercased() == name }
     }
 
     public static func url(for section: SentinelSection) -> URL {

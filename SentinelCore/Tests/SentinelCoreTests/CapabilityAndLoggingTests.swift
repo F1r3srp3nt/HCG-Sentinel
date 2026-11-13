@@ -32,13 +32,28 @@ final class CapabilityTests: XCTestCase {
 
     func testInterfaceOnlyCapabilitiesCanNeverBeVerified() {
         let registry = CapabilityRegistry()
-        for id in [CapabilityID.deviceWideCapture, .trafficFiltering, .macDebugProxy] {
+        for id in [CapabilityID.deviceWideCapture, .macDebugProxy] {
             registry.setUserEnabled(id, true)
             registry.setEnvironment(id, .supported)
             XCTAssertFalse(registry.recordVerified(id, evidence: "claimed"))
             XCTAssertEqual(registry.state(id)?.readiness, .interfaceOnly)
             XCTAssertNotNil(registry.state(id)?.action)
         }
+    }
+
+    func testFilteringAndWifiDiscoveryNeedAVerifiedBackend() {
+        let registry = CapabilityRegistry()
+        for id in [CapabilityID.trafficFiltering, .nearbyWifiDiscovery] {
+            XCTAssertEqual(registry.state(id)?.descriptor.implementation, .included)
+            registry.setUserEnabled(id, true)
+            XCTAssertEqual(registry.state(id)?.readiness, .environmentUnknown, "shown as unverified until a backend reports it")
+            registry.setEnvironment(id, .unsupported("No helper or node offers this."))
+            XCTAssertFalse(registry.recordVerified(id, evidence: "claimed"))
+            XCTAssertEqual(registry.state(id)?.readiness, .unsupported)
+        }
+        XCTAssertEqual(registry.state(.nearbyWifiDiscovery)?.descriptor.tier, .externalNode)
+        XCTAssertEqual(registry.state(.trafficFiltering)?.descriptor.tier, .privilegedHelper)
+        XCTAssertEqual(registry.state(.networkAssessment)?.descriptor.tier, .onDevice)
     }
 
     func testUnsupportedEnvironmentBlocksAndClearsVerification() {
@@ -196,24 +211,36 @@ final class OperationsAndSettingsTests: XCTestCase {
 
     func testDefaultsKeepActiveCollectionOff() {
         let settings = SentinelSettings()
-        XCTAssertFalse(settings.bluetoothScanningEnabled)
-        XCTAssertFalse(settings.radioNodeEnabled)
-        XCTAssertFalse(settings.helperEnabled)
+        XCTAssertFalse(settings.scanningEnabled)
+        XCTAssertFalse(settings.remoteConnectionsEnabled)
         XCTAssertFalse(settings.diagnosticLoggingEnabled)
         XCTAssertFalse(settings.previewMode)
-        XCTAssertTrue(settings.testEndpoint.isEmpty)
+        XCTAssertTrue(settings.testEndpoints.isEmpty)
         XCTAssertTrue(settings.animationsEnabled)
     }
 
     func testSettingsDecodeToleratesMissingAndInvalidValues() throws {
         let json = #"{"bluetoothScanningEnabled":true,"helperPort":80,"requestTimeoutSeconds":9999,"captureRetention":"forever","bluetoothAutoStopSeconds":17}"#
         let settings = try JSONDecoder().decode(SentinelSettings.self, from: Data(json.utf8))
-        XCTAssertTrue(settings.bluetoothScanningEnabled)
+        XCTAssertTrue(settings.scanningEnabled, "the old Bluetooth switch migrates to Scanning")
         XCTAssertEqual(settings.helperPort, 47_655)
         XCTAssertEqual(settings.requestTimeoutSeconds, 120)
         XCTAssertEqual(settings.captureRetention, .sevenDays)
         XCTAssertEqual(settings.bluetoothAutoStopSeconds, 60)
-        XCTAssertFalse(settings.radioNodeEnabled)
+        XCTAssertFalse(settings.remoteConnectionsEnabled)
+    }
+
+    func testLegacySettingsMigrate() throws {
+        let json = #"{"radioNodeEnabled":false,"helperEnabled":true,"testEndpoint":"http://192.168.1.20:8080"}"#
+        let settings = try JSONDecoder().decode(SentinelSettings.self, from: Data(json.utf8))
+        XCTAssertTrue(settings.remoteConnectionsEnabled, "either old connection switch migrates to Remote connections")
+        XCTAssertEqual(settings.testEndpoints, ["http://192.168.1.20:8080"])
+        let current = #"{"remoteConnectionsEnabled":false,"helperEnabled":true,"testEndpoints":[" http://a ","http://A","",""]}"#
+        let decoded = try JSONDecoder().decode(SentinelSettings.self, from: Data(current.utf8))
+        XCTAssertFalse(decoded.remoteConnectionsEnabled, "a stored new value wins over legacy keys")
+        XCTAssertEqual(decoded.testEndpoints, ["http://a"], "trimmed, de-duplicated, blanks removed")
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(decoded)) as? [String: Any])
+        XCTAssertNil(encoded["helperEnabled"], "legacy keys are not written back")
     }
 
     func testSettingsRoundTripThroughStore() {
@@ -224,7 +251,7 @@ final class OperationsAndSettingsTests: XCTestCase {
         XCTAssertEqual(store.load(), SentinelSettings())
         var settings = SentinelSettings()
         settings.captureRetention = .untilDeleted
-        settings.testEndpoint = "http://127.0.0.1:8080"
+        settings.testEndpoints = ["http://127.0.0.1:8080"]
         store.save(settings)
         XCTAssertEqual(store.load(), settings)
     }
@@ -232,6 +259,7 @@ final class OperationsAndSettingsTests: XCTestCase {
     func testDeepLinksAreNavigationOnly() {
         XCTAssertEqual(DeepLink.section(from: URL(string: "hcgsentinel://open/bluetooth")!), .bluetooth)
         XCTAssertEqual(DeepLink.section(from: URL(string: "HCGSentinel://open/Settings")!), .settings)
+        XCTAssertEqual(DeepLink.section(from: URL(string: "hcgsentinel://open/networkcheck")!), .networkCheck)
         for section in SentinelSection.allCases {
             XCTAssertEqual(DeepLink.section(from: DeepLink.url(for: section)), section)
         }

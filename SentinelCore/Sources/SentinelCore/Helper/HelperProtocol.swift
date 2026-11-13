@@ -151,6 +151,12 @@ public struct HelperCapabilityReport: Codable, Equatable {
     public var supportedOperations: [String]
     public var notes: String?
 
+    /// Operations in the version 1 allowlist that the helper reports. Anything else it lists (for example
+    /// "monitorMode" or "packetInjection") is ignored and never enables a control.
+    public var recognizedOperations: Set<HelperOperation> {
+        Set(supportedOperations.compactMap(HelperOperation.init(rawValue:)))
+    }
+
     public init(helperVersion: String, packaging: String, supportedOperations: [String], notes: String? = nil) {
         self.helperVersion = helperVersion
         self.packaging = packaging

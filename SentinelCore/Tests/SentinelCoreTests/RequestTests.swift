@@ -48,7 +48,7 @@ final class RequestBuilderTests: XCTestCase {
     func testPreparesRequestWithinEndpoint() throws {
         var draft = RequestDraft.template
         draft.method = .POST
-        draft.path = "/echo?mode=test"
+        draft.url = "/echo?mode=test"
         draft.headers.append(HeaderField(name: "Content-Type", value: "application/json"))
         draft.headers.append(HeaderField(name: "X-Disabled", value: "1", isEnabled: false))
         draft.headers.append(HeaderField(name: "", value: ""))
@@ -65,14 +65,64 @@ final class RequestBuilderTests: XCTestCase {
             XCTAssertEqual($0 as? RequestValidationError, .noEndpoint)
         }
         for path in ["//evil.example/x", "http://evil.example/", "relative", "/a b", "/x\\y", "@evil.example/", ":9/x", "/a\nb"] {
-            XCTAssertThrowsError(try RequestBuilder.prepare(RequestDraft(path: path), endpoint: target), path)
+            XCTAssertThrowsError(try RequestBuilder.prepare(RequestDraft(url: path), endpoint: target), path)
         }
-        let prepared = try RequestBuilder.prepare(RequestDraft(path: "/@evil.example/x"), endpoint: target)
+        let prepared = try RequestBuilder.prepare(RequestDraft(url: "/@evil.example/x"), endpoint: target)
         XCTAssertEqual(prepared.url.host, "127.0.0.1")
         XCTAssertFalse(target.contains(URL(string: "http://127.0.0.1:8081/")!))
         XCTAssertFalse(target.contains(URL(string: "https://127.0.0.1:8080/")!))
         XCTAssertFalse(target.contains(URL(string: "http://127.0.0.1.evil.example:8080/")!))
         XCTAssertTrue(target.contains(URL(string: "http://127.0.0.1:8080/any/path?q=1")!))
+    }
+
+    func testFullURLsMustMatchAnAllowedEndpoint() throws {
+        let endpoints = TestEndpoint.parseList(["http://127.0.0.1:8080", "https://test.hcg.example", "nonsense", " ", "http://127.0.0.1:8080"])
+        XCTAssertEqual(endpoints.endpoints.map { $0.displayString }, ["http://127.0.0.1:8080", "https://test.hcg.example"])
+        XCTAssertEqual(endpoints.problems.count, 1, "invalid entries are reported, blanks and duplicates skipped")
+        let allowed = endpoints.endpoints
+
+        var prepared = try RequestBuilder.prepare(RequestDraft(url: "https://test.hcg.example/api/v1?x=1"), endpoints: allowed)
+        XCTAssertEqual(prepared.url.absoluteString, "https://test.hcg.example/api/v1?x=1")
+        XCTAssertEqual(prepared.endpoint, "https://test.hcg.example")
+        prepared = try RequestBuilder.prepare(RequestDraft(url: "/health"), endpoints: allowed)
+        XCTAssertEqual(prepared.url.absoluteString, "http://127.0.0.1:8080/health", "paths use the primary endpoint")
+        XCTAssertNoThrow(try RequestBuilder.prepare(RequestDraft(url: "HTTPS://TEST.HCG.EXAMPLE:443/"), endpoints: allowed))
+
+        func error(_ url: String) -> RequestValidationError? {
+            do { _ = try RequestBuilder.prepare(RequestDraft(url: url), endpoints: allowed); return nil }
+            catch { return error as? RequestValidationError }
+        }
+        XCTAssertEqual(error("https://evil.example/"), .offEndpoint)
+        XCTAssertEqual(error("http://test.hcg.example/"), .offEndpoint, "scheme must match")
+        XCTAssertEqual(error("https://test.hcg.example:8443/"), .offEndpoint, "port must match")
+        XCTAssertEqual(error("http://127.0.0.1:8081/"), .offEndpoint)
+        XCTAssertEqual(error("https://test.hcg.example.evil.example/"), .offEndpoint)
+        XCTAssertEqual(error("https://user:pw@test.hcg.example/"), .invalidURL)
+        XCTAssertEqual(error("ftp://test.hcg.example/"), .invalidURL)
+        XCTAssertEqual(error("https://test.hcg.example/a b"), .invalidURL)
+        XCTAssertEqual(error("test.hcg.example/x"), .invalidURL)
+        XCTAssertThrowsError(try RequestBuilder.prepare(RequestDraft(url: "/"), endpoints: [])) {
+            XCTAssertEqual($0 as? RequestValidationError, .noEndpoint)
+        }
+    }
+
+    func testResponseFormatting() throws {
+        let json = Data(#"{"b":[1,2],"a":"x"}"#.utf8)
+        XCTAssertEqual(ResponseFormatter.suggestedFormat(for: json), .json)
+        let pretty = ResponseFormatter.render(json, as: .json)
+        let a = try XCTUnwrap(pretty.range(of: "\"a\""))
+        let b = try XCTUnwrap(pretty.range(of: "\"b\""))
+        XCTAssertTrue(a.lowerBound < b.lowerBound, "keys are sorted")
+        XCTAssertTrue(pretty.contains("\n"), "pretty-printed over several lines")
+        XCTAssertEqual(ResponseFormatter.render(Data("plain".utf8), as: .json), "The body is not valid JSON.")
+        XCTAssertEqual(ResponseFormatter.suggestedFormat(for: Data("hello".utf8)), .text)
+        let binary = Data([0xff, 0xfe, 0x00, 0x41])
+        XCTAssertEqual(ResponseFormatter.suggestedFormat(for: binary), .hex)
+        XCTAssertTrue(ResponseFormatter.render(binary, as: .hex).hasPrefix("0000  ff fe 00 41"))
+        XCTAssertTrue(ResponseFormatter.render(binary, as: .text).contains("not valid UTF-8"))
+        let long = ResponseFormatter.render(Data(String(repeating: "a", count: 50).utf8), as: .text, limit: 10)
+        XCTAssertTrue(long.hasSuffix("40 more characters not shown"))
+        XCTAssertEqual(ResponseFormatter.render(Data(), as: .json), "")
     }
 
     func testHeaderAndBodyValidation() throws {
@@ -87,7 +137,7 @@ final class RequestBuilderTests: XCTestCase {
         XCTAssertEqual(error(RequestDraft(method: .GET, body: "data")), .bodyNotAllowed("GET"))
         let huge = String(repeating: "a", count: RequestBuilder.maxBodyBytes + 1)
         XCTAssertEqual(error(RequestDraft(method: .POST, body: huge)), .bodyTooLarge(RequestBuilder.maxBodyBytes))
-        XCTAssertNil(error(RequestDraft(method: .DELETE, path: "/items/1")))
+        XCTAssertNil(error(RequestDraft(method: .DELETE, url: "/items/1")))
     }
 
     func testPreviewListsEveryChange() {
@@ -95,13 +145,13 @@ final class RequestBuilderTests: XCTestCase {
         var draft = baseline
         XCTAssertTrue(RequestPreview.changes(from: baseline, to: draft).isEmpty)
         draft.method = .PUT
-        draft.path = "/v2"
+        draft.url = "/v2"
         draft.headers[0].value = "application/json"
         draft.headers[1].isEnabled = false
         draft.headers.append(HeaderField(name: "X-Test", value: "1"))
         draft.body = "hello"
         let changes = RequestPreview.changes(from: baseline, to: draft)
-        XCTAssertEqual(changes.map { $0.kind }, [.method, .path, .headerChanged, .headerRemoved, .headerAdded, .body])
+        XCTAssertEqual(changes.map { $0.kind }, [.method, .url, .headerChanged, .headerRemoved, .headerAdded, .body])
         XCTAssertEqual(changes[0].before, "GET")
         XCTAssertEqual(changes[0].after, "PUT")
         XCTAssertEqual(changes[2].subject, "Accept")
@@ -111,7 +161,7 @@ final class RequestBuilderTests: XCTestCase {
     }
 
     func testRawTextCanBeRedacted() throws {
-        let draft = RequestDraft(method: .POST, path: "/login?session=abc",
+        let draft = RequestDraft(method: .POST, url: "/login?session=abc",
                                  headers: [HeaderField(name: "Authorization", value: "Bearer supersecret"),
                                            HeaderField(name: "Accept", value: "*/*")],
                                  body: #"{"password":"hunter2","user":"ana"}"#)
@@ -151,7 +201,7 @@ final class RequestComposerTests: XCTestCase {
     func testSuccessfulSendTransitionsAndLogsRedacted() {
         var responses = 0
         composer.onResponse = { _ in responses += 1 }
-        var draft = RequestDraft(method: .POST, path: "/echo?api_key=SECRETKEY",
+        var draft = RequestDraft(method: .POST, url: "/echo?api_key=SECRETKEY",
                                  headers: [HeaderField(name: "Authorization", value: "Bearer TOPSECRET")], body: "password=hunter2")
         draft.headers.append(HeaderField(name: "X-Trace", value: "1"))
         XCTAssertNil(composer.send(draft, endpoint: endpoint))
@@ -218,7 +268,7 @@ final class LocalServiceIntegrationTests: XCTestCase {
 
     func testEchoReflectsEditedMethodHeadersAndBody() throws {
         let endpoint = try serviceEndpoint()
-        let draft = RequestDraft(method: .PUT, path: "/echo?case=1",
+        let draft = RequestDraft(method: .PUT, url: "/echo?case=1",
                                  headers: [HeaderField(name: "X-Sentinel-Test", value: "edited"),
                                            HeaderField(name: "Content-Type", value: "text/plain")],
                                  body: "sentinel-body")
@@ -235,9 +285,9 @@ final class LocalServiceIntegrationTests: XCTestCase {
 
     func testStatusAndRedirectAreSurfacedNotFollowed() throws {
         let endpoint = try serviceEndpoint()
-        guard case .completed(let teapot) = run(RequestDraft(path: "/status/418"), endpoint: endpoint) else { return XCTFail("no response") }
+        guard case .completed(let teapot) = run(RequestDraft(url: "/status/418"), endpoint: endpoint) else { return XCTFail("no response") }
         XCTAssertEqual(teapot.statusCode, 418)
-        guard case .completed(let redirect) = run(RequestDraft(path: "/redirect"), endpoint: endpoint) else { return XCTFail("no response") }
+        guard case .completed(let redirect) = run(RequestDraft(url: "/redirect"), endpoint: endpoint) else { return XCTFail("no response") }
         XCTAssertEqual(redirect.statusCode, 302, "redirects must be shown, never followed off the endpoint")
         XCTAssertTrue(redirect.headers.contains { $0.name.lowercased() == "location" })
     }

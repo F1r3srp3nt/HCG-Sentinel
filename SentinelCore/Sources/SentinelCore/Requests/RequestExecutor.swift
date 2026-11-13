@@ -3,6 +3,45 @@ import Foundation
 import FoundationNetworking
 #endif
 
+public enum ResponseBodyFormat: String, CaseIterable, Equatable {
+    case text = "Text"
+    case json = "JSON"
+    case hex = "Hex"
+}
+
+/// Renders a response body for inspection. Never executes or follows anything in it.
+public enum ResponseFormatter {
+    public static let displayLimit = 20_000
+
+    public static func prettyJSON(_ data: Data) -> String? {
+        guard !data.isEmpty, let object = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
+              let pretty = try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .fragmentsAllowed]),
+              let text = String(data: pretty, encoding: .utf8) else { return nil }
+        return text
+    }
+
+    /// The best initial format: JSON when the body parses as JSON, text when it is UTF-8, otherwise hex.
+    public static func suggestedFormat(for data: Data) -> ResponseBodyFormat {
+        if prettyJSON(data) != nil { return .json }
+        return String(data: data, encoding: .utf8) != nil ? .text : .hex
+    }
+
+    public static func render(_ data: Data, as format: ResponseBodyFormat, limit: Int = displayLimit) -> String {
+        if data.isEmpty { return "" }
+        let text: String
+        switch format {
+        case .text:
+            text = String(data: data, encoding: .utf8) ?? "The body is not valid UTF-8 text. Choose Hex to inspect it."
+        case .json:
+            text = prettyJSON(data) ?? "The body is not valid JSON."
+        case .hex:
+            return Hex.dump(Array(data), maxBytes: max(16, limit / 4))
+        }
+        guard text.count > limit else { return text }
+        return String(text.prefix(limit)) + "\n… \(text.count - limit) more characters not shown"
+    }
+}
+
 public struct HTTPResponseRecord: Equatable {
     public let statusCode: Int
     public let headers: [PreparedRequest.Header]
@@ -183,10 +222,16 @@ public final class RequestComposer {
     /// Validates and sends the draft. Returns the failure when nothing was sent.
     @discardableResult
     public func send(_ draft: RequestDraft, endpoint: TestEndpoint?, timeout: TimeInterval = 30) -> RequestFailure? {
+        send(draft, endpoints: endpoint.map { [$0] } ?? [], timeout: timeout)
+    }
+
+    /// Validates and sends the draft to one of the allowed endpoints. Returns the failure when nothing was sent.
+    @discardableResult
+    public func send(_ draft: RequestDraft, endpoints: [TestEndpoint], timeout: TimeInterval = 30) -> RequestFailure? {
         guard !isSending else { return .busy }
         let prepared: PreparedRequest
         do {
-            prepared = try RequestBuilder.prepare(draft, endpoint: endpoint)
+            prepared = try RequestBuilder.prepare(draft, endpoints: endpoints)
         } catch let error as RequestValidationError {
             state = .failed(.validation(error))
             return .validation(error)
