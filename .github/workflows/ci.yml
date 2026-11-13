@@ -57,55 +57,65 @@ jobs:
           xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel \
             -destination 'generic/platform=iOS' -configuration Release \
             CODE_SIGNING_ALLOWED=NO -quiet
-      - name: Pick simulators
-        run: |
-          xcrun simctl list devices available -j > devices.json
-          python3 - <<'PY' >> "$GITHUB_ENV"
-          import json
-          runtimes = json.load(open("devices.json"))["devices"]
-          def pick(prefix):
-              for runtime in sorted((r for r in runtimes if "iOS" in r), reverse=True):
-                  for device in runtimes[runtime]:
-                      if device["name"].startswith(prefix):
-                          return device["udid"]
-              return ""
-          print("IPHONE_UDID=" + pick("iPhone"))
-          print("IPAD_UDID=" + pick("iPad"))
-          PY
+      - name: Pick an iPhone simulator
+        run: python3 Tools/pick_simulator.py iPhone >> "$GITHUB_ENV"
       - name: Unit tests on iPhone simulator
         timeout-minutes: 20
         run: |
           xcodebuild test -project HCGSentinel.xcodeproj -scheme HCGSentinel \
-            -destination "platform=iOS Simulator,id=$IPHONE_UDID" \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath build/tests \
             CODE_SIGNING_ALLOWED=NO -quiet
-      - name: Launch on iPhone and iPad simulators and capture screenshots
-        timeout-minutes: 15
+      - name: Package the simulator app for the screenshot jobs
+        run: tar -C build/tests/Build/Products/Debug-iphonesimulator -czf simulator-app.tar.gz HCGSentinel.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulator-app
+          path: simulator-app.tar.gz
+          retention-days: 3
+
+  # Launches the already-built app and photographs every section. Separate from the build-and-test job and one
+  # job per device, so a slow simulator boot on a hosted runner cannot fail, or be confused with, the tests.
+  screenshots:
+    name: Simulator screenshots (${{ matrix.device }})
+    needs: app-macos
+    strategy:
+      fail-fast: false
+      matrix:
+        device: [iPhone, iPad]
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulator-app
+      - name: Unpack the app and pick a simulator
+        run: |
+          tar -xzf simulator-app.tar.gz
+          python3 Tools/pick_simulator.py "${{ matrix.device }}" >> "$GITHUB_ENV"
+      - name: Boot the simulator
+        timeout-minutes: 10
+        run: |
+          xcrun simctl boot "$SIMULATOR_UDID" || true
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+      - name: Install, launch and capture each section
+        timeout-minutes: 8
         run: |
           set -x
-          xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel \
-            -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim \
-            CODE_SIGNING_ALLOWED=NO -quiet
-          APP=build/sim/Build/Products/Debug-iphonesimulator/HCGSentinel.app
           mkdir -p screenshots
-          for entry in "iphone:$IPHONE_UDID" "ipad:$IPAD_UDID"; do
-            name="${entry%%:*}"; udid="${entry#*:}"
-            [ -n "$udid" ] || continue
-            xcrun simctl boot "$udid" || true
-            xcrun simctl bootstatus "$udid" -b
-            xcrun simctl install "$udid" "$APP"
-            xcrun simctl launch "$udid" com.hcg.sentinel
-            sleep 8
-            xcrun simctl io "$udid" screenshot "screenshots/$name-dashboard.png"
-            for section in network bluetooth radio requests settings capabilities; do
-              xcrun simctl openurl "$udid" "hcgsentinel://open/$section"
-              sleep 4
-              xcrun simctl io "$udid" screenshot "screenshots/$name-$section.png"
-            done
-            xcrun simctl terminate "$udid" com.hcg.sentinel || true
+          xcrun simctl install "$SIMULATOR_UDID" HCGSentinel.app
+          xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel
+          sleep 8
+          xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/${{ matrix.device }}-dashboard.png"
+          for section in network bluetooth radio requests settings capabilities; do
+            xcrun simctl openurl "$SIMULATOR_UDID" "hcgsentinel://open/$section"
+            sleep 4
+            xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/${{ matrix.device }}-$section.png"
           done
+          xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: simulator-screenshots
+          name: simulator-screenshots-${{ matrix.device }}
           path: screenshots
           if-no-files-found: ignore

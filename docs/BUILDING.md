@@ -137,8 +137,9 @@ deliberately not scripted anywhere in this repository.
 
 * **Linux:** `swift test` for `SentinelCore` (uses the portable SHA-256 path).
 * **macOS:** `swift test` (CryptoKit path), an unsigned Release build for a generic iOS device, the full scheme's
-  tests on an iPhone simulator, then launches the app on iPhone and iPad simulators and uploads screenshots of every
-  section as a build artifact.
+  tests on an iPhone simulator.
+* **Screenshots:** two further jobs (iPhone, iPad) launch the app built by the test job and upload screenshots of
+  every section. They are separate so that a slow simulator boot cannot fail the build-and-test job.
 
 `.github/workflows/archive.yml` is the focused archive check. With explicitly selected Xcode versions (16.4 and
 26.6) it runs `Tools/build.sh info`, `range`, `simulator`, `archive` and `inspect` for the default scheme, and for
