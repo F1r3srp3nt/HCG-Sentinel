@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Mock Sentinel Node Protocol v1 node for development (standard library only).
+"""Mock Sentinel Node Protocol v2 node for development (standard library only).
 
-This is NOT a radio. It generates synthetic spectrum frames and always
-announces itself with "simulated": true, so HCG Sentinel labels its data as
-simulated and never marks radio hardware as verified.
+This is NOT a radio and NOT a Wi-Fi scanner. It generates synthetic spectrum frames and a fixed, fabricated list of
+Wi-Fi networks, and always announces itself with "simulated": true, so HCG Sentinel labels its data as simulated and
+never marks radio hardware or Wi-Fi discovery as verified.
 
-  python3 Tools/mock_radio_node.py --host 127.0.0.1 --port 8765 [--token SECRET] [--no-hardware]
+Version 2 requires a shared pairing key (at least 32 bytes, given as hex). Without --key a new one is generated and
+printed; enter it in Sentinel's Radio Lab.
+
+  python3 Tools/mock_radio_node.py --host 127.0.0.1 --port 8765 [--key HEX] [--no-hardware] [--no-wifi]
 
 Connect from the app with ws://<host>:8765/
 """
 import argparse
 import base64
 import hashlib
+import hmac
+import os
 import json
 import math
 import random
@@ -71,16 +76,47 @@ def spectrum(center, span, bins, t):
     return out
 
 
+CONTEXT = "snp-v2"
+
+
+def mac(key, *parts):
+    return hmac.new(key, "|".join((CONTEXT,) + parts).encode(), hashlib.sha256).digest()
+
+
+def b64(data):
+    return base64.b64encode(data).decode()
+
+
+FAKE_NETWORKS = [  # Fabricated; documentation-style BSSIDs (locally administered).
+    {"ssid": "SIMULATED-LabNet", "bssid": "02:00:00:00:10:01", "channel": 6, "frequencyMHz": 2437, "rssiDbm": -47, "security": "wpa2"},
+    {"ssid": "SIMULATED-Guest", "bssid": "02:00:00:00:10:02", "channel": 11, "frequencyMHz": 2462, "rssiDbm": -66, "security": "open"},
+    {"ssid": None, "bssid": "02:00:00:00:10:03", "channel": 36, "frequencyMHz": 5180, "rssiDbm": -72, "security": "wpa3"},
+]
+
+
 class Node(socketserver.BaseRequestHandler):
+    def send_raw(self, envelope):
+        write_frame(self.request, self.lock, json.dumps(envelope, separators=(",", ":")).encode())
+
     def send(self, kind, payload=None):
-        message = {"v": 1, "type": kind}
-        if payload is not None:
-            message["payload"] = payload
-        write_frame(self.request, self.lock, json.dumps(message).encode())
+        """Authenticated session message."""
+        text = json.dumps(payload if payload is not None else {}, separators=(",", ":"), sort_keys=True)
+        with self.seq_lock:
+            self.seq += 1
+            seq = self.seq
+            tag = mac(self.session_key, "message", "node", str(seq), kind, text)
+            self.send_raw({"v": 2, "type": kind, "seq": seq, "payload": text, "mac": b64(tag)})
+
+    def reject(self, code, message):
+        self.send_raw({"v": 2, "type": "error", "payload": json.dumps({"code": code, "message": message})})
 
     def handle(self):
         self.lock = threading.Lock()
+        self.seq_lock = threading.Lock()
         self.stream = None
+        self.seq = 0
+        self.client_seq = 0
+        self.session_key = b""
         request = b""
         while b"\r\n\r\n" not in request:
             chunk = self.request.recv(4096)
@@ -100,7 +136,8 @@ class Node(socketserver.BaseRequestHandler):
         self.request.sendall(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                               "Sec-WebSocket-Accept: %s\r\n\r\n" % accept).encode())
         print("client connected", self.client_address, flush=True)
-        greeted = False
+        phase = "hello"
+        client_nonce = node_nonce = ""
         try:
             while True:
                 opcode, payload = read_frame(self.request)
@@ -112,37 +149,72 @@ class Node(socketserver.BaseRequestHandler):
                 if opcode != 1:
                     continue
                 try:
-                    message = json.loads(payload)
-                    kind, body = message["type"], message.get("payload") or {}
-                    if message.get("v") != 1:
+                    envelope = json.loads(payload)
+                    kind = envelope["type"]
+                    if envelope.get("v") != 2:
                         raise ValueError
                 except (ValueError, KeyError, TypeError):
-                    self.send("error", {"code": "bad_message", "message": "Malformed envelope."})
+                    self.reject("bad_message", "Expected a version 2 envelope.")
                     break
-                if not greeted:
-                    if kind != "hello" or 1 not in body.get("protocolVersions", []):
-                        self.send("error", {"code": "bad_hello", "message": "Expected a version 1 hello."})
+                if phase == "hello":
+                    try:
+                        hello = json.loads(envelope["payload"])
+                        client_nonce = hello["clientNonce"]
+                        assert kind == "hello" and 2 in hello["protocolVersions"] and len(base64.b64decode(client_nonce)) == 32
+                    except Exception:
+                        self.reject("bad_hello", "Expected a version 2 hello.")
                         break
-                    if ARGS.token and body.get("authToken") != ARGS.token:
-                        self.send("error", {"code": "unauthorized", "message": "Token rejected."})
-                        break
-                    greeted = True
-                    self.send("hello_ack", {"protocolVersion": 1, "nodeName": "mock-node",
-                                            "nodeSoftware": "mock_radio_node.py 1.0", "simulated": True})
-                elif kind == "get_capabilities":
+                    node_nonce = b64(os.urandom(32))
                     hardware = [] if ARGS.no_hardware else [{
                         "id": "sim0", "driver": "simulated", "description": "Synthetic signal generator (not a radio)",
                         "minFrequencyHz": 24e6, "maxFrequencyHz": 1.766e9, "maxSpanHz": 2.4e6}]
-                    self.send("capabilities", {"features": ["spectrum"], "hardware": hardware, "maxBins": 2048})
-                elif kind == "get_status":
-                    self.send("status", {"state": "streaming" if self.stream else "idle",
-                                         "hardwarePresent": not ARGS.no_hardware})
+                    features = ["spectrum"] + ([] if ARGS.no_wifi else ["wifi_scan"])
+                    body = json.dumps({"protocolVersion": 2, "nodeNonce": node_nonce,
+                                       "node": {"nodeName": "mock-node", "nodeSoftware": "mock_radio_node.py 2.0", "simulated": True},
+                                       "capabilities": {"features": features, "hardware": hardware, "maxBins": 2048}},
+                                      separators=(",", ":"), sort_keys=True)
+                    self.send_raw({"v": 2, "type": "challenge", "payload": body,
+                                   "mac": b64(mac(KEY, "challenge", client_nonce, body))})
+                    phase = "authenticate"
+                    continue
+                if phase == "authenticate":
+                    expected = mac(KEY, "authenticate", client_nonce, node_nonce)
+                    try:
+                        given = base64.b64decode(envelope.get("mac") or "")
+                    except Exception:
+                        given = b""
+                    if kind != "authenticate" or not hmac.compare_digest(expected, given):
+                        self.reject("authentication_failed", "Client proof rejected.")
+                        break
+                    self.session_key = mac(KEY, "session", client_nonce, node_nonce)
+                    phase = "session"
+                    self.send("ready")
+                    continue
+                # Session: every client message must carry the next sequence number and a valid MAC.
+                seq, text = envelope.get("seq"), envelope.get("payload") or ""
+                try:
+                    given = base64.b64decode(envelope.get("mac") or "")
+                except Exception:
+                    given = b""
+                expected = mac(self.session_key, "message", "client", str(seq), kind, text)
+                if seq != self.client_seq + 1 or not hmac.compare_digest(expected, given):
+                    print("rejected unauthenticated or out-of-order message", flush=True)
+                    break
+                self.client_seq = seq
+                body = json.loads(text) if text else {}
+                if kind == "get_status":
+                    self.send("status", {"state": "streaming" if self.stream else "idle", "hardwarePresent": not ARGS.no_hardware})
                 elif kind == "subscribe_spectrum":
                     self.stop_stream()
                     self.stream = threading.Event()
                     threading.Thread(target=self.run_stream, args=(body, self.stream), daemon=True).start()
                 elif kind == "unsubscribe_spectrum":
                     self.stop_stream()
+                elif kind == "get_wifi_scan":
+                    if ARGS.no_wifi:
+                        self.send("error", {"code": "unsupported", "message": "Wi-Fi scanning is disabled on this node."})
+                    else:
+                        self.send("wifi_scan", {"scannedAt": time.time(), "interface": "sim0", "networks": FAKE_NETWORKS})
                 elif kind == "ping":
                     self.send("pong")
                 elif kind == "bye":
@@ -180,16 +252,24 @@ class Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
 
+KEY = b""
+
+
 def main():
-    global ARGS
+    global ARGS, KEY
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--token", default="")
+    parser.add_argument("--key", default="", help="pairing key as hex (64+ digits); generated when omitted")
     parser.add_argument("--no-hardware", action="store_true", help="report no radio hardware")
+    parser.add_argument("--no-wifi", action="store_true", help="do not offer the wifi_scan feature")
     ARGS = parser.parse_args()
+    KEY = bytes.fromhex(ARGS.key) if ARGS.key else os.urandom(32)
+    if len(KEY) < 32:
+        parser.error("the pairing key must be at least 32 bytes (64 hex digits)")
     with Server((ARGS.host, ARGS.port), Node) as server:
-        print(f"Mock SNP v1 node (SIMULATED) on ws://{ARGS.host}:{ARGS.port}/", flush=True)
+        print(f"Mock SNP v2 node (SIMULATED) on ws://{ARGS.host}:{ARGS.port}/", flush=True)
+        print(f"Pairing key: {KEY.hex()}", flush=True)
         try:
             server.serve_forever()
         except KeyboardInterrupt:
