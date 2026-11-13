@@ -126,7 +126,7 @@ jobs:
                 else
                   xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection "$section"
                 fi
-                sleep 6
+                sleep 9
                 xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-$pass-$section.png"
               done
             done
