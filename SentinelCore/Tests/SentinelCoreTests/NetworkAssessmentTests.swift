@@ -82,7 +82,7 @@ final class NetworkAssessmentTests: XCTestCase {
                                        randomLabel: { "sentinel-check-0001" })
     }
 
-    private func run() -> AssessmentReport {
+    private func runAssessment() -> AssessmentReport {
         assessment.start()
         guard case .finished(let report) = assessment.state else {
             XCTFail("expected a finished report, state \(assessment.state)")
@@ -98,7 +98,7 @@ final class NetworkAssessmentTests: XCTestCase {
     // MARK: Report wording
 
     func testCleanResultIsNeverCalledSafe() {
-        let report = run()
+        let report = runAssessment()
         XCTAssertEqual(report.count(.securityConcern), 0)
         XCTAssertEqual(report.count(.connectivityProblem), 0)
         XCTAssertEqual(report.headline, "No security concerns found by these checks")
@@ -132,7 +132,7 @@ final class NetworkAssessmentTests: XCTestCase {
 
     func testOfflineSkipsNetworkTestsWithoutClaimingThreats() {
         probe.connection = ConnectionFacts(isOnline: false, statusDescription: "No network connection", interfaceTypes: [])
-        let report = run()
+        let report = runAssessment()
         XCTAssertEqual(finding(report, "connection.offline")?.kind, .connectivityProblem)
         for step in AssessmentStep.allCases where step.usesNetwork {
             XCTAssertEqual(finding(report, "\(step.rawValue).skipped")?.kind, .notChecked, step.rawValue)
@@ -149,7 +149,7 @@ final class NetworkAssessmentTests: XCTestCase {
         probe.fetchResults["http://captive.apple.com/hotspot-detect.html"] = .connectivityFailure(code: -1004, message: "Could not connect")
         probe.fetchResults["https://example.com/"] = .timedOut
         probe.fetchResults["https://www.apple.com/library/test/success.html"] = FetchErrorClassifier.classify(code: -1009, message: "Offline")
-        let report = run()
+        let report = runAssessment()
         XCTAssertEqual(report.count(.securityConcern), 0)
         XCTAssertEqual(report.count(.notice), 0)
         XCTAssertEqual(report.count(.connectivityProblem), 5)
@@ -160,14 +160,14 @@ final class NetworkAssessmentTests: XCTestCase {
 
     func testConnectionStateUnavailable() {
         probe.connection = nil
-        let report = run()
+        let report = runAssessment()
         XCTAssertEqual(finding(report, "connection.unavailable")?.kind, .unavailable)
         XCTAssertEqual(finding(report, "dnsResolution.skipped")?.evidence, ["The connection state could not be determined."])
     }
 
     func testNotOnWiFiIsANotice() {
         probe.connection = ConnectionFacts(isOnline: true, statusDescription: "Online", interfaceTypes: ["Cellular"])
-        let report = run()
+        let report = runAssessment()
         XCTAssertEqual(finding(report, "connection.notwifi")?.kind, .notice)
         XCTAssertTrue(finding(report, "connection.notwifi")?.evidence.contains("Gateway: not reported by the system") ?? false)
     }
@@ -176,7 +176,7 @@ final class NetworkAssessmentTests: XCTestCase {
 
     func testDnsRewritingIsAConcern() {
         probe.nonexistentResult = .addresses(["198.51.100.7"])
-        let report = run()
+        let report = runAssessment()
         let rewrite = finding(report, "dnsIntegrity.rewrite")
         XCTAssertEqual(rewrite?.kind, .securityConcern)
         XCTAssertTrue(rewrite?.evidence.first?.contains("sentinel-check-0001.example.com") ?? false)
@@ -186,7 +186,7 @@ final class NetworkAssessmentTests: XCTestCase {
 
     func testControlNameMissingIsNoticeAndIntegrityInconclusive() {
         probe.resolveResults["example.com"] = .notFound
-        let report = run()
+        let report = runAssessment()
         XCTAssertEqual(finding(report, "dnsResolution.nxdomain")?.kind, .notice)
         XCTAssertEqual(finding(report, "dnsIntegrity.inconclusive")?.kind, .connectivityProblem)
         XCTAssertNil(finding(report, "dnsIntegrity.ok"), "'not found' only counts as correct when DNS demonstrably works")
@@ -195,7 +195,7 @@ final class NetworkAssessmentTests: XCTestCase {
     func testUntrustedCertificateIsAConcernAndHandshakeFailureANotice() {
         probe.fetchResults["https://example.com/"] = FetchErrorClassifier.classify(code: -1202, message: "untrusted", certificates: ["example.com", "Evil CA"])
         probe.fetchResults["https://www.apple.com/library/test/success.html"] = FetchErrorClassifier.classify(code: -1200, message: "handshake failed")
-        let report = run()
+        let report = runAssessment()
         let untrusted = finding(report, "httpsExample.untrusted")
         XCTAssertEqual(untrusted?.kind, .securityConcern)
         XCTAssertTrue(untrusted?.evidence.contains { $0.contains("Evil CA") } ?? false)
@@ -217,7 +217,7 @@ final class NetworkAssessmentTests: XCTestCase {
 
     func testCaptivePortalRedirectIsANotice() {
         probe.fetchResults["http://captive.apple.com/hotspot-detect.html"] = .response(status: 302, location: "http://portal.example/login", bodyPrefix: "", certificates: [])
-        let report = run()
+        let report = runAssessment()
         let altered = finding(report, "captivePortal.altered")
         XCTAssertEqual(altered?.kind, .notice)
         XCTAssertTrue(altered?.evidence.contains("Redirected to: http://portal.example/login") ?? false)
@@ -225,35 +225,35 @@ final class NetworkAssessmentTests: XCTestCase {
 
     func testWiFiSecurityAndUnavailableIdentity() {
         probe.wifi = WiFiFacts(ssid: "Cafe", bssid: nil, security: .open)
-        var report = run()
+        var report = runAssessment()
         let open = finding(report, "wifiDetails.open")
         XCTAssertEqual(open?.kind, .securityConcern)
         XCTAssertTrue(open?.evidence.contains("BSSID: unavailable") ?? false, "missing values are shown as unavailable, never invented")
 
         probe.wifi = WiFiFacts(ssid: "Old", security: .wep)
-        report = run()
+        report = runAssessment()
         XCTAssertEqual(finding(report, "wifiDetails.wep")?.kind, .securityConcern)
 
         probe.wifi = WiFiFacts(unavailableReason: "Requires the Access Wi-Fi Information entitlement and location permission.")
-        report = run()
+        report = runAssessment()
         let unavailable = finding(report, "wifiDetails.identity")
         XCTAssertEqual(unavailable?.kind, .unavailable)
         XCTAssertEqual(unavailable?.evidence, ["Requires the Access Wi-Fi Information entitlement and location permission."])
 
         probe.wifi = WiFiFacts(ssid: "Home", bssid: "02:00:00:00:00:09", security: nil)
-        report = run()
+        report = runAssessment()
         XCTAssertEqual(finding(report, "wifiDetails.security")?.kind, .unavailable)
     }
 
     func testProxyAndTunnel() {
         probe.proxy = ProxyFacts(httpProxy: "10.0.0.5:8080", tunnelInterfaces: ["utun4"])
-        var report = run()
+        var report = runAssessment()
         XCTAssertEqual(finding(report, "proxy.proxy")?.kind, .notice)
         XCTAssertEqual(finding(report, "proxy.proxy")?.evidence, ["HTTP proxy: 10.0.0.5:8080"])
         XCTAssertEqual(finding(report, "proxy.tunnel")?.kind, .notice)
 
         probe.proxy = ProxyFacts(unavailableReason: "The system returned no proxy settings.")
-        report = run()
+        report = runAssessment()
         XCTAssertEqual(finding(report, "proxy.unavailable")?.kind, .unavailable)
     }
 
@@ -312,7 +312,7 @@ final class NetworkAssessmentTests: XCTestCase {
         XCTAssertEqual(probe.resolvedHosts, ["example.com"])
         assessment.cancel()
         probe.hang = []
-        let report = run()
+        let report = runAssessment()
         XCTAssertFalse(report.cancelled)
         XCTAssertEqual(report.completedSteps, 8)
     }

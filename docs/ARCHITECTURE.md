@@ -19,6 +19,35 @@ The app never contains decision logic that the core could own. Platform adapters
 (`BluetoothCentral`, `NodeTransport`, `HelperTransport`, `HTTPTransport`), so every state machine is tested against
 mocks, including permission failures that cannot be reproduced on a simulator.
 
+## Backends
+
+Sentinel separates three backends, and a control only appears as working when its backend has proved it:
+
+| Backend | Reached how | Proven by |
+| --- | --- | --- |
+| Standard iOS | Public APIs in the app sandbox | The operation itself succeeding (path update, parsed file, BLE advertisement, HTTP response, completed network check) |
+| Jailbreak helper | Loopback TCP to a separately installed helper (`docs/HELPER_INTERFACE.md`) | Mutual HMAC authentication **and** a capability report; only operations in the v1 allowlist count |
+| External node | WebSocket to a node you operate (`docs/NODE_PROTOCOL.md`) | Authenticated v2 handshake whose MAC covers the capability report; data from `simulated` nodes never verifies anything |
+
+Jailbreak markers (package managers, filesystem paths, sideloading) are not checked and would not count. Monitor
+mode, packet injection and radio control are not operations of either protocol; names like these in a helper report
+or node feature list are ignored.
+
+Own-device filtering is offered only when an authenticated helper reports `setFilterRules`; otherwise the Request
+Composer screen explains the missing requirement. Nearby Wi-Fi discovery is offered only when an authenticated node
+offers `wifi_scan`; stock iOS has no API for it.
+
+## Switches
+
+| Setting | Enables | Turning it off |
+| --- | --- | --- |
+| Scanning | Starting Bluetooth LE scans; requesting Wi-Fi scans from a node | Stops a Bluetooth scan at once; cancels a pending Wi-Fi scan request |
+| Remote connections | Connecting to the node; probing the helper; sending test requests | Closes node and helper sessions; cancels a request in flight |
+| Animation | Status pulses and the moving light line | Makes them static (Reduce Motion also turns them off) |
+
+All default to off except Animation. Turning a switch on starts nothing by itself. Check My Network is separate: it
+runs only when Start is pressed and contacts only the documented test endpoints (`docs/NETWORK_CHECK.md`).
+
 ## Capability tiers
 
 Every feature belongs to exactly one tier (`CapabilityTier`):
@@ -94,6 +123,8 @@ apps.
 | Node token, helper pairing key | Keychain, this device only | Until removed in Settings. |
 | Imported captures | `Application Support/Captures`, excluded from backups, file-protected | Per retention setting; explicit delete. |
 | Activity history | Memory (300 entries), redacted on entry | Until the app closes or it is cleared. |
+| Check My Network results | Memory | Until the next run or the app closes. |
+| Node and helper pairing keys | Keychain, this device only | Until removed in Settings. |
 | Diagnostic log | `Application Support/Diagnostics`, ~500 KB cap, redacted | Only when enabled; explicit delete. |
 | Request drafts and responses | Memory | Until the app closes. |
 

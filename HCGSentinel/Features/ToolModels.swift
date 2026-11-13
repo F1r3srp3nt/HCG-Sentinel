@@ -605,7 +605,7 @@ final class HelperModel: ObservableObject {
         } catch {
             return completion("The rules are not valid: addresses must be IP literals (optionally with /prefix), ports 1–65535, at most \(HelperRequestValidator.maxFilterRules) rules.")
         }
-        run((.setFilterRules, body, { [weak self] result in
+        run((HelperOperation.setFilterRules, body, { [weak self] result in
             switch result {
             case .success:
                 self?.registry.setEnvironment(.trafficFiltering, .supported)
@@ -622,7 +622,7 @@ final class HelperModel: ObservableObject {
         guard canUseFiltering, verifiedOperations.contains(.clearFilterRules) else {
             return completion(filteringRequirement ?? "The helper does not report clearFilterRules.")
         }
-        run((.clearFilterRules, Data(), { result in
+        run((HelperOperation.clearFilterRules, Data(), { result in
             switch result {
             case .success: completion("The helper removed its filter rules.")
             case .failure(let error): completion(error.userMessage)

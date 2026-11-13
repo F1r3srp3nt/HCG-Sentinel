@@ -39,31 +39,46 @@ The simulator has no Bluetooth radio and no document provider with your files, s
 3. Settings › turn **Animation** off: the light line and pulses stop. Turn it on, then enable Reduce Motion in the
    simulator's Accessibility settings: they stay stopped.
 4. Increase the text size (Settings › Accessibility › Larger Text): text wraps instead of truncating.
-5. Bluetooth Explorer › Start scanning with the setting off: "Bluetooth scanning is off" with a button to Settings.
-   Enable it and start again: on the simulator this reports "Bluetooth LE is not available" — that is correct.
+5. Bluetooth Explorer › Start scanning with **Scanning** off: "Scanning is off" with a button to Settings. Turn it
+   on and start again: on the simulator this reports "Bluetooth LE is not available" — that is correct.
 6. Request Composer:
    * Start the local test service on the Mac (`--port 8080`). The simulator shares the Mac's loopback.
-   * Settings › HCG test endpoint › `http://127.0.0.1:8080` › Use this endpoint.
-   * Set method `POST`, path `/echo?token=abc`, add header `Authorization: Bearer secret`, body `{"password":"x"}`.
-   * Review request…: the sheet lists the changes from the template and the exact request. Send.
-   * The response shows 200, timing, headers and the echoed body.
+   * Settings › turn on **Remote connections**; Request testing › add `http://127.0.0.1:8080`.
+   * Set method `POST`, URL `http://127.0.0.1:8080/echo?token=abc` (or just `/echo?token=abc`), add header
+     `Authorization: Bearer secret`, body `{"password":"x"}`.
+   * Review request…: the sheet lists the changes, the exact request and which endpoint allowed it. Send.
+   * The response shows 200, timing, headers and the echoed body; switch the body between Text, JSON and Hex.
    * Dashboard › Recent activity shows the request with `token=[REDACTED]` and no header or body contents.
-   * Path `/status/503` shows a 503. Path `/redirect` shows a 302 that was not followed. Path `//example.com/`
-     is refused before sending.
+   * `/status/503` shows a 503; `/redirect` a 302 that was not followed; `https://example.com/` is refused before
+     sending because it is not an allowed endpoint.
+   * Turn Remote connections off while `/delay/20` is in flight: the request is cancelled.
+   * Own-device filtering (bottom of the screen) explains that no helper is verified and offers no controls.
 7. Radio Lab:
-   * `python3 Tools/mock_radio_node.py` on the Mac.
-   * Settings › Allow node connection, address `ws://127.0.0.1:8765/`, Save address.
-   * Radio Lab › Connect: node "mock-node", data source "Simulated (no radio)". Start spectrum stream: the plot is
-     labelled "SIMULATED NODE DATA". Capabilities shows the node link verified and hardware spectrum **not** verified.
-   * Stop the mock node: the session reports failure. Restart it with `--token t` and connect without a token: the
-     node's rejection is shown.
-8. Network Inspector: drag `synthetic.pcap` (from `python3 Tools/make_synthetic_capture.py out`) onto the simulator
+   * `python3 Tools/mock_radio_node.py` on the Mac; note the pairing key it prints.
+   * Settings › Remote connections on; External analysis node › address `ws://127.0.0.1:8765/`, Save address;
+     paste the pairing key, Save key.
+   * Radio Lab › Connect: "Connected (authenticated)", node "mock-node", data source "Simulated (no radio)",
+     recognised features `spectrum, wifi_scan`.
+   * Start spectrum stream: the plot is labelled "SIMULATED NODE DATA". With Scanning on, Request Wi-Fi scan: three
+     `SIMULATED-…` networks labelled "Simulated node data". Capabilities shows the node link verified, and hardware
+     spectrum and nearby Wi-Fi discovery **not** verified.
+   * Turn Scanning off during a scan request: it is cancelled. Turn Remote connections off: the session closes.
+   * Save a different (wrong) pairing key and connect: "could not prove it holds the pairing key"; nothing from the
+     node is shown. Restart the mock with `--no-wifi`: the Wi-Fi card says the node does not offer scanning.
+8. Check My Network (Dashboard tile, or Network Inspector › Check My Network):
+   * Start: the progress shows each step; finished results list findings with evidence, time, limitations and
+     remediation. The headline never says the network is safe.
+   * Start and press Cancel during the HTTPS steps: "Check cancelled…", remaining steps "Not checked".
+   * Turn the Mac's Wi-Fi off (simulator offline) and run: "No network connection", network steps "Not checked",
+     no security concerns.
+   * On the simulator, Wi-Fi name and security are reported **unavailable** with the reason.
+9. Network Inspector: drag `synthetic.pcap` (from `python3 Tools/make_synthetic_capture.py out`) onto the simulator
    to add it to Files, then Import. Six packets, "IMPORTED FILE" banner, packet detail with layers and hex. Import
    `truncated.pcap` (warning shown, five packets) and `not-a-capture.pcap` (clear error).
-9. Settings › Preview mode: banners appear, the three Bluetooth devices are tagged "Demo", scanning and sending are
+10. Settings › Preview mode: banners appear, the three Bluetooth devices are tagged "Demo", scanning and sending are
    disabled. Turn it off: demo data disappears and Capabilities shows nothing newly verified.
-10. Start a spectrum stream, then Stop All Operations: the alert lists what stopped; saved captures are still listed.
-11. `xcrun simctl openurl booted hcgsentinel://open/bluetooth` navigates; `hcgsentinel://open/bluetooth?start=1`
+11. Start a spectrum stream, then Stop All Operations: the alert lists what stopped; saved captures are still listed.
+12. `xcrun simctl openurl booted hcgsentinel://open/bluetooth` navigates; `hcgsentinel://open/bluetooth?start=1`
     does nothing.
 
 ## Physical-device checks

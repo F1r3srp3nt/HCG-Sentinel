@@ -68,7 +68,11 @@ The helper must verify, in order: MAC → sequence greater than the last accepte
 | `setFilterRules` | `rules[]`: `id`, `action` (`block`/`allow`), `transport` (`tcp`/`udp`/`any`), `remoteAddress` (IP literal, optional `/prefix`), `remotePort?` | 1–64 rules; port 1–65 535. |
 | `clearFilterRules` | none | Removes only rules this helper installed. |
 
-`startCapture`, `stopCapture`, `setFilterRules` and `clearFilterRules` have **no implementation anywhere**. In the app
+`startCapture`, `stopCapture`, `setFilterRules` and `clearFilterRules` have **no helper-side implementation
+anywhere**. The app offers its own-device filtering controls (Request Composer screen) only after an authenticated
+helper's capability report lists `setFilterRules`; it then probes, re-reads the report, sends the validated rules and
+disconnects. Until then it explains which requirement is missing. Operation names in a report that are not in this
+allowlist — for example "monitorMode", "packetInjection" or "radioControl" — are ignored and never enable anything. In the app
 they are `interfaceOnly` capabilities and can never show as verified. How a capture file would be handed back to the
 app is deliberately left for version 2, once a real backend exists to design against.
 
