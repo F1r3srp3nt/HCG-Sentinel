@@ -183,7 +183,7 @@ final class NodeCodecTests: XCTestCase {
         XCTAssertNil(NodeAuth.pairingKey(fromHex: String(repeating: "zz", count: 32)))
         XCTAssertNil(NodeAuth.pairingKey(fromHex: String(repeating: "a", count: 63)))
         XCTAssertEqual(NodeAuth.pairingKey(fromHex: String(repeating: "0f", count: 32))?.count, 32)
-        XCTAssertEqual(NodeAuth.pairingKey(fromHex: "0f0f 0f0f\n" + String(repeating: "0f", count: 30))?.count, 32)
+        XCTAssertEqual(NodeAuth.pairingKey(fromHex: "0f0f 0f0f\n" + String(repeating: "0f", count: 28))?.count, 32, "whitespace is ignored")
     }
 }
 
