@@ -44,7 +44,7 @@ struct BluetoothExplorerView: View {
 
     private var controlCard: some View {
         SentinelCard(highlight: isScanning ? Theme.cyan : nil) {
-            HStack(spacing: 8) {
+            AdaptiveStack(spacing: 8) {
                 PulseDot(color: stateTone.color, active: isScanning)
                 Text(stateTitle)
                     .font(.headline)

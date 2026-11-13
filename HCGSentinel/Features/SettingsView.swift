@@ -376,7 +376,7 @@ private struct DiagnosticsSettingsCard: View {
                           isOn: $app.settings.diagnosticLoggingEnabled)
             Rectangle().fill(Theme.hairline).frame(height: 1)
             InfoRow(label: "Log file", value: app.diagnosticLogBytes == 0 ? "Empty" : Formatters.bytes(app.diagnosticLogBytes))
-            HStack(spacing: 10) {
+            AdaptiveStack(spacing: 10) {
                 Button(action: { showShare = true }) { Label("Export", systemImage: "square.and.arrow.up") }
                     .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
                     .disabled(app.diagnosticLogBytes == 0)

@@ -65,7 +65,7 @@ struct NetworkInspectorView: View {
     private var connectionCard: some View {
         SentinelCard {
             if let snapshot = connection.snapshot {
-                HStack {
+                AdaptiveStack {
                     Text(snapshot.headline).font(.headline).foregroundColor(Theme.textPrimary)
                     Spacer()
                     StatusPill(text: snapshot.isOnline ? "Online" : "Offline", tone: snapshot.isOnline ? .verified : .warning)
@@ -143,7 +143,7 @@ struct NetworkInspectorView: View {
 
     private var savedCard: some View {
         SentinelCard {
-            HStack {
+            AdaptiveStack {
                 Text("Saved captures").font(.headline).foregroundColor(Theme.textPrimary)
                 Spacer()
                 Text(network.saved.isEmpty ? "None" : "\(network.saved.count) · \(Formatters.bytes(network.savedByteCount))")
@@ -282,7 +282,7 @@ private struct PacketRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
+            AdaptiveStack(spacing: 8) {
                 Text("#\(packet.id)")
                     .font(Theme.mono(.caption))
                     .foregroundColor(Theme.textSecondary)

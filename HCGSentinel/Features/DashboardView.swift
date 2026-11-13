@@ -266,7 +266,7 @@ struct ActivityRow: View {
     let entry: ActivityEntry
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        AdaptiveStack(alignment: .top, spacing: 10) {
             Text(Formatters.time.string(from: entry.date))
                 .font(Theme.mono(.caption))
                 .foregroundColor(Theme.textSecondary)

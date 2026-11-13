@@ -175,7 +175,7 @@ private struct HeaderEditorRow: View {
 
     var body: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 8) {
+            AdaptiveStack(spacing: 8) {
                 Toggle("Send this header", isOn: $header.isEnabled)
                     .labelsHidden()
                     .toggleStyle(SwitchToggleStyle(tint: Theme.cyan))

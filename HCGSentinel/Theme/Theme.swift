@@ -92,10 +92,13 @@ struct SentinelCard<Content: View>: View {
 struct SectionLabel: View {
     let text: String
     var tone: Tone = .ready
+    @Environment(\.sizeCategory) private var sizeCategory
 
     var body: some View {
         HStack(spacing: 8) {
-            Rectangle().fill(tone.color).frame(width: 14, height: 2)
+            if !sizeCategory.isAccessibilityCategory {
+                Rectangle().fill(tone.color).frame(width: 14, height: 2)
+            }
             Text(text.uppercased())
                 .font(.system(.caption, design: .default).weight(.semibold))
                 .kerning(1.2)
@@ -169,11 +172,13 @@ struct InfoRow: View {
 /// A horizontal row at normal text sizes that becomes a vertical stack at accessibility sizes, so a title and a
 /// trailing badge never overlap or squeeze each other.
 struct AdaptiveStack<Content: View>: View {
+    var alignment: VerticalAlignment = .center
     var spacing: CGFloat = 8
     let content: Content
     @Environment(\.sizeCategory) private var sizeCategory
 
-    init(spacing: CGFloat = 8, @ViewBuilder content: () -> Content) {
+    init(alignment: VerticalAlignment = .center, spacing: CGFloat = 8, @ViewBuilder content: () -> Content) {
+        self.alignment = alignment
         self.spacing = spacing
         self.content = content()
     }
@@ -182,7 +187,7 @@ struct AdaptiveStack<Content: View>: View {
         if sizeCategory.isAccessibilityCategory {
             VStack(alignment: .leading, spacing: spacing) { content }
         } else {
-            HStack(alignment: .center, spacing: spacing) { content }
+            HStack(alignment: alignment, spacing: spacing) { content }
         }
     }
 }
