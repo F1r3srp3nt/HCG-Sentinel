@@ -390,7 +390,7 @@
 			isa = PBXFileReference;
 			explicitFileType = wrapper.application;
 			includeInIndex = 0;
-			path = HCGSentinel.app;
+			path = HCGSentinelModern.app;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 		ADB158B392D819399534D9D3 = {
@@ -894,7 +894,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hcg.sentinel;
-				PRODUCT_NAME = HCGSentinel;
+				PRODUCT_NAME = HCGSentinelModern;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
@@ -917,7 +917,7 @@
 				);
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.hcg.sentinel;
-				PRODUCT_NAME = HCGSentinel;
+				PRODUCT_NAME = HCGSentinelModern;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;

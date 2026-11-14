@@ -36,9 +36,10 @@ mkdir -p "$LOGS"
 FLAVOR="${FLAVOR:-legacy}"
 RELEASE_CONFIG="Release"
 DEBUG_CONFIG="Debug"
+# The app bundle and executable carry the target's product name; the bundle identifier and display name are the same.
 case "$FLAVOR" in
-  legacy) SCHEME="HCGSentinel" ;;
-  modern) SCHEME="HCGSentinelModern" ;;
+  legacy) SCHEME="HCGSentinel"; APP_NAME="HCGSentinel" ;;
+  modern) SCHEME="HCGSentinelModern"; APP_NAME="HCGSentinelModern" ;;
   *) echo "FLAVOR must be 'legacy' or 'modern', not '$FLAVOR'."; exit 2 ;;
 esac
 
@@ -138,7 +139,7 @@ cmd_device() {
   if [ -n "${DEVICE_ID:-}" ]; then destination="id=$DEVICE_ID"; fi
   run_xcodebuild device build -project "$PROJECT" -scheme "$SCHEME" -configuration "$DEBUG_CONFIG" \
     -derivedDataPath "$BUILD_DIR/DerivedData" -destination "$destination" "${extra[@]}"
-  local app="$BUILD_DIR/DerivedData/Build/Products/$DEBUG_CONFIG-iphoneos/HCGSentinel.app"
+  local app="$BUILD_DIR/DerivedData/Build/Products/$DEBUG_CONFIG-iphoneos/$APP_NAME.app"
   echo "App: $app"
   echo "Minimum iOS: $(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist")"
   if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
@@ -163,9 +164,9 @@ cmd_archive() {
 }
 
 cmd_inspect() {
-  local app="$ARCHIVE/Products/Applications/HCGSentinel.app"
+  local app="$ARCHIVE/Products/Applications/$APP_NAME.app"
   [ -d "$app" ] || { echo "No app at $app. Run 'Tools/build.sh archive' first."; exit 1; }
-  local plist="$app/Info.plist" binary="$app/HCGSentinel"
+  local plist="$app/Info.plist" binary="$app/$APP_NAME"
   echo "App: $app"
   echo "Bundle identifier: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")"
   echo "Version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist"))"
