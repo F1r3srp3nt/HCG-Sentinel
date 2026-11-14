@@ -59,11 +59,16 @@ Features are identical because the sources are identical. Newer APIs are used be
 example `NavigationStack` on iOS 16+, `NavigationView` before), so both targets contain the same screens and
 behaviour on the same iOS version. The minimum is a real compiler setting, not an edited `MinimumOSVersion`.
 
-**Fixed in this version:** both targets used to produce `HCGSentinel.app`. Any build of both targets together (for
-example `xcodebuild -alltargets`, or a tool that builds every target) stopped with `Multiple commands produce
-…/Release-iphoneos/HCGSentinel.app`. Scheme-based builds (Xcode, `Tools/build.sh`, HCG Executable Maker) were not
-affected. The modern target now produces `HCGSentinelModern.app`; its bundle identifier and display name did not
-change.
+**Fixed in this version:** both targets used to produce `HCGSentinel.app`. Building both targets in one build
+stopped with `Multiple commands produce …/Release-iphoneos/HCGSentinel.app` (reproduced in CI with
+`xcodebuild -alltargets`). The modern target now produces `HCGSentinelModern.app`, and its bundle identifier and
+display name did not change. CI now checks that every target has its own product, and builds both schemes into one
+derived-data folder.
+
+Builds that go through a scheme (Xcode, `Tools/build.sh`, HCG Executable Maker) build one target and were never
+affected. `xcodebuild -alltargets` remains unusable for this project for a separate reason: without a scheme,
+xcodebuild does not build the local `SentinelCore` package (`Unable to resolve module dependency: 'SentinelCore'`).
+Always build with `-scheme`.
 
 ### Which one to build
 

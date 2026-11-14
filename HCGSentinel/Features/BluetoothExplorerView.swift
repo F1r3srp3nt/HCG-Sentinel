@@ -32,7 +32,10 @@ struct BluetoothExplorerView: View {
         Screen {
             if isPreview { PreviewBanner(detail: "These three devices are fabricated. No Bluetooth scan is running and none can be started in Preview mode.") }
             controlCard
-            knowledgeCard
+            Text("Signal strength is not distance, and unnamed or unknown devices are normal. Details at the end of this screen.")
+                .font(.footnote)
+                .foregroundColor(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
             filterCard
             AdaptiveStack {
                 SectionLabel(text: listTitle)
@@ -56,6 +59,7 @@ struct BluetoothExplorerView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
+            knowledgeCard
         }
         .navigationBarTitle("Bluetooth Explorer", displayMode: .inline)
         .onReceive(clock) { now = $0 }
