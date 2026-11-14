@@ -64,19 +64,25 @@ struct DashboardView: View {
             Image("SentinelHeader")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: 560)
+                // Capped so the status cards stay in view on small iPhones and in landscape.
+                .frame(maxWidth: 520, maxHeight: 150)
                 .frame(maxWidth: .infinity)
                 .accessibilityLabel("HCG Sentinel")
                 .accessibilityAddTraits(.isHeader)
             SweepLine()
             AdaptiveStack {
-                Text("Authorised testing of your own devices, networks and services.")
-                    .font(.footnote)
-                    .foregroundColor(Theme.textSecondary)
+                StatusPill(text: app.activeOperations.isEmpty ? "Idle" : "\(app.activeOperations.count) running",
+                           tone: app.activeOperations.isEmpty ? .off : .ready)
+                Text(app.activeOperations.isEmpty ? "Nothing is scanning or connected." : app.activeOperations.joined(separator: " · "))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(Theme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
-                StatusPill(text: app.activeOperations.isEmpty ? "Idle" : "Active", tone: app.activeOperations.isEmpty ? .off : .ready)
             }
+            Text("Authorised testing of your own devices, networks and services. Standard iOS features work on their own; helper and node features appear only after they verify.")
+                .font(.footnote)
+                .foregroundColor(Theme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.bottom, 2)
     }

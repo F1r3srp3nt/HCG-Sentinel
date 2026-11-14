@@ -25,6 +25,10 @@
 			isa = PBXBuildFile;
 			fileRef = 50B9C78F8D6CE7155EFFDE38;
 		};
+		1815783805A4ECFF4CBCC859 = {
+			isa = PBXBuildFile;
+			fileRef = F72D2F61D743A839B8243948;
+		};
 		1D44BA41B1836A9B04EFF63B = {
 			isa = PBXBuildFile;
 			fileRef = 2A5A747FB219F9D3C6BA1700;
@@ -485,6 +489,12 @@
 			path = PreviewData.swift;
 			sourceTree = "<group>";
 		};
+		F72D2F61D743A839B8243948 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = BluetoothModelTests.swift;
+			sourceTree = "<group>";
+		};
 		312B8DDB1885AA95C7E64651 = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -616,6 +626,7 @@
 			isa = PBXGroup;
 			children = (
 				A091C20761EA4F0FAF6E04A1,
+				F72D2F61D743A839B8243948,
 				4751A22D65F1D1961EC45604,
 				CD42F08BBEBE850DF40BF21E,
 				C2422B703FDCCE97662D43A2,
@@ -772,6 +783,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				BCF9D3424C7921671D089749,
+				1815783805A4ECFF4CBCC859,
 				F02E98F076DCF261EB8F25F7,
 				7B8B027BDD33649C3F52BD01,
 				F3F7C896614BEC81FA85F020,

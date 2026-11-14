@@ -110,11 +110,13 @@ private struct RegularLayout: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("HCG SENTINEL")
-                    .font(.system(.headline, design: .default).weight(.bold))
-                    .kerning(2)
-                    .foregroundColor(Theme.textPrimary)
+            VStack(alignment: .leading, spacing: 6) {
+                Image("SentinelHeader")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 64)
+                    .accessibilityLabel("HCG Sentinel")
+                    .accessibilityAddTraits(.isHeader)
                 SweepLine()
             }
             .padding(.horizontal, 16)
