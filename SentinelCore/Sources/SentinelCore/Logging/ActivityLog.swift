@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ActivityCategory: String, Codable, CaseIterable {
-    case system, network, bluetooth, radio, request, helper, settings
+    case system, network, bluetooth, radio, request, helper, settings, devices
 }
 
 public enum ActivitySeverity: String, Codable {

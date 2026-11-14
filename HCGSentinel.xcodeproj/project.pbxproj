@@ -29,6 +29,10 @@
 			isa = PBXBuildFile;
 			fileRef = F72D2F61D743A839B8243948;
 		};
+		1C91177D478D6A2C167A3779 = {
+			isa = PBXBuildFile;
+			fileRef = 7356EC2B93D71AD29E83F90E;
+		};
 		1D44BA41B1836A9B04EFF63B = {
 			isa = PBXBuildFile;
 			fileRef = 2A5A747FB219F9D3C6BA1700;
@@ -52,6 +56,10 @@
 		3099FDA331A9AED9794C57BF = {
 			isa = PBXBuildFile;
 			fileRef = 8953467BB375D3F422963209;
+		};
+		34200B74491ED9136347B270 = {
+			isa = PBXBuildFile;
+			fileRef = D03CA5EC342B3F5F6EB47C8F;
 		};
 		38BC38D3C648A528AB7E0793 = {
 			isa = PBXBuildFile;
@@ -209,6 +217,10 @@
 			isa = PBXBuildFile;
 			fileRef = 129E2D3986154F1EA268EA56;
 		};
+		D3C3621F802C458314FEAA2D = {
+			isa = PBXBuildFile;
+			fileRef = 7356EC2B93D71AD29E83F90E;
+		};
 		D3E71E4C4E3A9531FEBCDE37 = {
 			isa = PBXBuildFile;
 			fileRef = C6B9776991A6ACE26BA549EE;
@@ -256,6 +268,10 @@
 		FF48EF547108BB631411DC55 = {
 			isa = PBXBuildFile;
 			fileRef = 5C4848C94B72C491235569FA;
+		};
+		FFDF24D0715470007D3E0374 = {
+			isa = PBXBuildFile;
+			fileRef = D03CA5EC342B3F5F6EB47C8F;
 		};
 		E14AFF94513A8630C47A3475 = {
 			isa = PBXContainerItemProxy;
@@ -348,6 +364,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			path = WebSocketNodeTransport.swift;
+			sourceTree = "<group>";
+		};
+		7356EC2B93D71AD29E83F90E = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = ConnectedDevicesView.swift;
 			sourceTree = "<group>";
 		};
 		8953467BB375D3F422963209 = {
@@ -465,6 +487,12 @@
 			path = PlatformNetworkProbe.swift;
 			sourceTree = "<group>";
 		};
+		D03CA5EC342B3F5F6EB47C8F = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = ConnectedDevicesModel.swift;
+			sourceTree = "<group>";
+		};
 		D1E3E66E4D5FEE69008260D7 = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -551,6 +579,15 @@
 			path = Platform;
 			sourceTree = "<group>";
 		};
+		3A55D0C676037139CD8D7F4D = {
+			isa = PBXGroup;
+			children = (
+				D03CA5EC342B3F5F6EB47C8F,
+				7356EC2B93D71AD29E83F90E,
+			);
+			path = ConnectedDevices;
+			sourceTree = "<group>";
+		};
 		5BD7F93A153E6DBEEFBE76D4 = {
 			isa = PBXGroup;
 			children = (
@@ -585,6 +622,7 @@
 		98E8A36B4FB7934181228642 = {
 			isa = PBXGroup;
 			children = (
+				3A55D0C676037139CD8D7F4D,
 				8307520261DB5FBF531718F4,
 				8F0E96B575BE00FE93154471,
 				BCD7F464D35F9BBE2B3F584E,
@@ -750,6 +788,8 @@
 			files = (
 				5569C91EB42F4D9A37E647AD,
 				E698F4B5A7F650E848DD6916,
+				34200B74491ED9136347B270,
+				1C91177D478D6A2C167A3779,
 				D1306221E2CD99F7610FEAFF,
 				4F7DDC71E44C334F93985BC4,
 				2D1E1A10BBC58CBC5A90A567,
@@ -796,6 +836,8 @@
 			files = (
 				8761A8A77150FEDE77F3CE85,
 				097A1B3FD549A24C3A5B094D,
+				FFDF24D0715470007D3E0374,
+				D3C3621F802C458314FEAA2D,
 				EB57B4772751E74F60188A1A,
 				3099FDA331A9AED9794C57BF,
 				5AC496A0228B274533FEFAD5,

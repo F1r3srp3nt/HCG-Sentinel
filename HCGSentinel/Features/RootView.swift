@@ -67,6 +67,7 @@ struct SectionContent: View {
         case .bluetooth: BluetoothExplorerView()
         case .radio: RadioLabView()
         case .requests: RequestComposerView()
+        case .devices: ConnectedDevicesView()
         case .capabilities: CapabilitiesView()
         case .settings: SettingsView()
         }

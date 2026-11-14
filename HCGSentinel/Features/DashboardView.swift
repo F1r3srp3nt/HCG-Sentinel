@@ -11,6 +11,7 @@ struct DashboardView: View {
     @EnvironmentObject private var requests: RequestModel
     @EnvironmentObject private var check: NetworkCheckModel
     @EnvironmentObject private var lab: SecurityLabModel
+    @EnvironmentObject private var devices: ConnectedDevicesModel
     @Environment(\.sizeCategory) private var sizeCategory
 
     private let statusColumns = [GridItem(.adaptive(minimum: 300), spacing: 14, alignment: .top)]
@@ -41,6 +42,7 @@ struct DashboardView: View {
                 tile(.bluetooth, status: bluetoothStatus)
                 tile(.radio, status: radioStatus)
                 tile(.requests, status: requestStatus)
+                tile(.devices, status: devicesStatus)
                 tile(.settings, status: "Controls and retention")
             }
             SectionLabel(text: "Recent activity")
@@ -250,6 +252,17 @@ struct DashboardView: View {
     private var radioStatus: String {
         if app.settings.previewMode { return "Preview data" }
         return radio.remoteConnectionsEnabled ? radio.state.title : "Disconnected · remote connections off"
+    }
+
+    private var devicesStatus: String {
+        switch devices.link {
+        case .notPaired: return "Not paired"
+        case .pairing: return "Awaiting approval"
+        case .connected: return "\(devices.devices?.installations.count ?? 0) paired"
+        case .offline: return "Server offline"
+        case .paused: return "Paused"
+        case .ended: return "Disconnected"
+        }
     }
 
     private var requestStatus: String {

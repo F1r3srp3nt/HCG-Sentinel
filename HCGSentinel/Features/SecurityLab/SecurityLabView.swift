@@ -116,8 +116,10 @@ struct ReportRow: View {
 /// The readable report: scope and limits first, then checks, evidence-first findings, gaps and next steps.
 struct SecurityReportView: View {
     @EnvironmentObject private var lab: SecurityLabModel
+    @EnvironmentObject private var devices: ConnectedDevicesModel
     let recordID: UUID
     @State private var shareURL: URL?
+    @State private var shareToDevice = false
     @State private var confirmDelete = false
 
     var body: some View {
@@ -202,7 +204,18 @@ struct SecurityReportView: View {
                 }
                 .buttonStyle(SentinelButtonStyle(kind: .destructive))
             }
-            Explanation("Exports are Markdown with secret values redacted. Sharing is always your choice; nothing is sent automatically.")
+            Button(action: { shareToDevice = true }) {
+                Label("Share with paired device", systemImage: "laptopcomputer.and.iphone")
+            }
+            .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
+            .disabled(!SentinelReportSharing.canShare(record))
+            .sheet(isPresented: $shareToDevice) {
+                ShareWithDeviceSheet(title: "\(record.module.title) — \(record.headline)") { id, name, version in
+                    SentinelReportSharing.report(from: record, installationId: id, appVersion: version, deviceName: name)
+                }
+                .environmentObject(devices)
+            }
+            Explanation("Exports are Markdown with secret values redacted. Sharing with a paired device sends the same redacted content through your HCG Server to the device you pick. Sharing is always your choice; nothing is sent automatically.")
         }
         .sheet(item: Binding(get: { shareURL.map(ShareItem.init(url:)) }, set: { shareURL = $0?.url })) { item in
             ShareSheet(items: [item.url])

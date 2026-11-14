@@ -35,6 +35,10 @@ jobs:
         run: swift test --package-path SentinelCore 2>&1 | tee core-test.log; test ${PIPESTATUS[0]} -eq 0
       - name: HCG Server contract harness tests
         run: python3 -m unittest -v Tools/test_hcg_server_assessment_harness.py
+      - name: Vendored HCG Device Link client is unmodified
+        run: cd HCGDeviceLink && shasum -a 256 -c VENDORED.sha256
+      - name: HCG Device Link client tests (unit + cross-language vectors)
+        run: swift test --package-path HCGDeviceLink
       - name: Live assessment output
         if: always()
         run: grep -E "EXPOSURE-CHECK|AUTH-LAB|skipped" core-test.log || true
@@ -148,7 +152,7 @@ jobs:
           for size in ${{ matrix.sizes }}; do
             xcrun simctl ui "$SIMULATOR_UDID" content_size "$size"
             for pass in top end; do
-              for section in dashboard networkcheck securitylab network bluetooth radio requests settings capabilities; do
+              for section in dashboard networkcheck securitylab network bluetooth radio requests devices settings capabilities; do
                 xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
                 sleep 1
                 if [ "$pass" = end ]; then
