@@ -15,9 +15,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT = "HCGSentinel"
 APP_DIR, TEST_DIR, PACKAGE = "HCGSentinel", "HCGSentinelTests", "SentinelCore"
-# Legacy route (default): runs on the iPhone X with iOS 14.7 and on everything newer.
+# Legacy route: runs on the iPhone X with iOS 14.7 and on everything newer. Set explicitly on the legacy app and its
+# tests only; Xcode releases whose supported range starts at 15.0 refuse it.
 DEPLOYMENT_TARGET = "14.7"
-# Modern route: for an Xcode whose supported deployment range starts above 14.7. Does NOT run on iOS 14.
+# Modern route: iOS 15.0 and later. Also the project-wide default, so no target inherits 14.7 by accident.
 MODERN_DEPLOYMENT_TARGET = "15.0"
 MODERN = f"{PROJECT}Modern"
 BUNDLE_ID = "com.hcg.sentinel"
@@ -105,7 +106,9 @@ def main():
                        includeInIndex=0, path=f"{PROJECT}Tests.xctest", sourceTree="BUILT_PRODUCTS_DIR")
     modern_product = add("product:modern", "PBXFileReference", explicitFileType="wrapper.application",
                          includeInIndex=0, path=f"{MODERN}.app", sourceTree="BUILT_PRODUCTS_DIR")
-    products_group = add("group:Products", "PBXGroup", children=[app_product, modern_product, test_product],
+    modern_test_product = add("product:moderntests", "PBXFileReference", explicitFileType="wrapper.cfbundle",
+                              includeInIndex=0, path=f"{MODERN}Tests.xctest", sourceTree="BUILT_PRODUCTS_DIR")
+    products_group = add("group:Products", "PBXGroup", children=[app_product, modern_product, test_product, modern_test_product],
                          name="Products", sourceTree="<group>")
     main_group = add("group:main", "PBXGroup", children=[app_group, test_group, package_ref, products_group], sourceTree="<group>")
 
@@ -138,7 +141,7 @@ def main():
         "ENABLE_USER_SCRIPT_SANDBOXING": "YES",
         "GCC_NO_COMMON_BLOCKS": "YES",
         "GCC_WARN_UNUSED_VARIABLE": "YES",
-        "IPHONEOS_DEPLOYMENT_TARGET": DEPLOYMENT_TARGET,
+        "IPHONEOS_DEPLOYMENT_TARGET": MODERN_DEPLOYMENT_TARGET,
         "SDKROOT": "iphoneos",
         "SWIFT_VERSION": "5.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
@@ -159,6 +162,7 @@ def main():
         "DEVELOPMENT_TEAM": "",
         "GENERATE_INFOPLIST_FILE": "NO",
         "INFOPLIST_FILE": f"{APP_DIR}/Resources/Info.plist",
+        "IPHONEOS_DEPLOYMENT_TARGET": DEPLOYMENT_TARGET,
         "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/Frameworks"],
         "MARKETING_VERSION": "0.1.0",
         "PRODUCT_BUNDLE_IDENTIFIER": BUNDLE_ID,
@@ -192,6 +196,7 @@ def main():
         "CURRENT_PROJECT_VERSION": 1,
         "DEVELOPMENT_TEAM": "",
         "GENERATE_INFOPLIST_FILE": "YES",
+        "IPHONEOS_DEPLOYMENT_TARGET": DEPLOYMENT_TARGET,
         "LD_RUNPATH_SEARCH_PATHS": ["$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks"],
         "MARKETING_VERSION": "0.1.0",
         "PRODUCT_BUNDLE_IDENTIFIER": f"{BUNDLE_ID}.tests",
@@ -199,6 +204,20 @@ def main():
         "TEST_HOST": f"$(BUILT_PRODUCTS_DIR)/{PROJECT}.app/{PROJECT}",
     }
     test_configs = configurations("tests", dict(test_settings), dict(test_settings))
+
+    # The same tests, hosted by the modern app, so the modern scheme can test without the 14.7 target.
+    # SENTINEL_MODERN_TESTS makes the test files import the HCGSentinelModern module instead of HCGSentinel.
+    modern_test_settings = {**test_settings,
+                            "IPHONEOS_DEPLOYMENT_TARGET": MODERN_DEPLOYMENT_TARGET,
+                            "PRODUCT_BUNDLE_IDENTIFIER": f"{BUNDLE_ID}.moderntests",
+                            "SWIFT_ACTIVE_COMPILATION_CONDITIONS": ["$(inherited)", "SENTINEL_MODERN_TESTS"],
+                            "TEST_HOST": f"$(BUILT_PRODUCTS_DIR)/{MODERN}.app/{MODERN}"}
+    modern_test_configs = configurations("moderntests", dict(modern_test_settings), dict(modern_test_settings))
+    modern_test_sources = add("phase:moderntests:sources", "PBXSourcesBuildPhase", buildActionMask=2147483647,
+                              files=[build_file(r, p, "moderntest-src") for r, p in test_files if p.suffix == ".swift"],
+                              runOnlyForDeploymentPostprocessing=0)
+    modern_test_frameworks = add("phase:moderntests:frameworks", "PBXFrameworksBuildPhase", buildActionMask=2147483647,
+                                 files=[], runOnlyForDeploymentPostprocessing=0)
 
     project_id = uid("project")
     app_target = add("target:app", "PBXNativeTarget", buildConfigurationList=app_configs,
@@ -216,13 +235,21 @@ def main():
                       buildPhases=[test_sources, test_frameworks], buildRules=[], dependencies=[dependency],
                       name=f"{PROJECT}Tests", productName=f"{PROJECT}Tests", productReference=test_product,
                       productType="com.apple.product-type.bundle.unit-test")
+    modern_proxy = add("proxy:moderntests->modern", "PBXContainerItemProxy", containerPortal=project_id, proxyType=1,
+                       remoteGlobalIDString=modern_target, remoteInfo=MODERN)
+    modern_dependency = add("dependency:moderntests->modern", "PBXTargetDependency", target=modern_target, targetProxy=modern_proxy)
+    modern_test_target = add("target:moderntests", "PBXNativeTarget", buildConfigurationList=modern_test_configs,
+                             buildPhases=[modern_test_sources, modern_test_frameworks], buildRules=[], dependencies=[modern_dependency],
+                             name=f"{MODERN}Tests", productName=f"{MODERN}Tests", productReference=modern_test_product,
+                             productType="com.apple.product-type.bundle.unit-test")
 
     objects[project_id] = {
         "isa": "PBXProject",
         "attributes": {"BuildIndependentTargetsInParallel": 1, "LastSwiftUpdateCheck": 1500, "LastUpgradeCheck": 1500,
                        "TargetAttributes": {app_target: {"CreatedOnToolsVersion": "15.0"},
                                             modern_target: {"CreatedOnToolsVersion": "15.0"},
-                                            test_target: {"CreatedOnToolsVersion": "15.0", "TestTargetID": app_target}}},
+                                            test_target: {"CreatedOnToolsVersion": "15.0", "TestTargetID": app_target},
+                                            modern_test_target: {"CreatedOnToolsVersion": "15.0", "TestTargetID": modern_target}}},
         "buildConfigurationList": project_configs,
         "compatibilityVersion": "Xcode 13.0",
         "developmentRegion": "en",
@@ -232,7 +259,7 @@ def main():
         "productRefGroup": products_group,
         "projectDirPath": "",
         "projectRoot": "",
-        "targets": [app_target, modern_target, test_target],
+        "targets": [app_target, modern_target, test_target, modern_test_target],
     }
 
     document = {"archiveVersion": 1, "classes": {}, "objectVersion": 54,
@@ -243,7 +270,7 @@ def main():
     (project_dir / "project.pbxproj").write_text("// !$*UTF8*$!\n" + render(document, 0) + "\n")
     schemes = project_dir / "xcshareddata/xcschemes"
     (schemes / f"{PROJECT}.xcscheme").write_text(scheme(app_target, PROJECT, test_target))
-    (schemes / f"{MODERN}.xcscheme").write_text(scheme(modern_target, MODERN, None))
+    (schemes / f"{MODERN}.xcscheme").write_text(scheme(modern_target, MODERN, modern_test_target))
     print(f"wrote {project_dir.name}: {len(app_files)} app files, {len(test_files)} test files, {len(objects)} objects")
 
 
@@ -257,7 +284,7 @@ def scheme(app_target, app_name, test_target):
     app = reference(app_target, f"{app_name}.app", app_name)
     testables = ""
     if test_target is not None:
-        tests = reference(test_target, f"{PROJECT}Tests.xctest", f"{PROJECT}Tests")
+        tests = reference(test_target, f"{app_name}Tests.xctest", f"{app_name}Tests")
         core = reference(f"{PACKAGE}Tests", f"{PACKAGE}Tests", f"{PACKAGE}Tests", f"container:{PACKAGE}")
         testables = f"""
          <TestableReference

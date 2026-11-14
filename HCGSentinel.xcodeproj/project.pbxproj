@@ -37,6 +37,10 @@
 			isa = PBXBuildFile;
 			fileRef = 5F2811738549F1EF373FB313;
 		};
+		25473607A8F41989361A9211 = {
+			isa = PBXBuildFile;
+			fileRef = 4751A22D65F1D1961EC45604;
+		};
 		26D59DA831A38EA6B7CB311C = {
 			isa = PBXBuildFile;
 			fileRef = 31C5859F99483F16DD7B2062;
@@ -52,6 +56,10 @@
 		3099FDA331A9AED9794C57BF = {
 			isa = PBXBuildFile;
 			fileRef = 8953467BB375D3F422963209;
+		};
+		35E0E047E8A422E04637F4A9 = {
+			isa = PBXBuildFile;
+			fileRef = CD42F08BBEBE850DF40BF21E;
 		};
 		38BC38D3C648A528AB7E0793 = {
 			isa = PBXBuildFile;
@@ -129,6 +137,10 @@
 			isa = PBXBuildFile;
 			fileRef = CD42F08BBEBE850DF40BF21E;
 		};
+		7D4F6258591AEEAFADF1C9C6 = {
+			isa = PBXBuildFile;
+			fileRef = C2422B703FDCCE97662D43A2;
+		};
 		867B2F884CE9E3583F4CFA49 = {
 			isa = PBXBuildFile;
 			fileRef = 16B7D591CAA76D555A803EF1;
@@ -140,6 +152,10 @@
 		8761A8A77150FEDE77F3CE85 = {
 			isa = PBXBuildFile;
 			fileRef = CC890A1DE343FC8121DDF7A5;
+		};
+		87901043FE72E00CACC56565 = {
+			isa = PBXBuildFile;
+			fileRef = A091C20761EA4F0FAF6E04A1;
 		};
 		8B01B6A9303B657BB8A01717 = {
 			isa = PBXBuildFile;
@@ -180,6 +196,10 @@
 		B46D08AF6D620EC4D5544037 = {
 			isa = PBXBuildFile;
 			fileRef = F2C03D9AF5A8FBEB20BF0832;
+		};
+		B544119036F0DFC21280EC85 = {
+			isa = PBXBuildFile;
+			fileRef = F72D2F61D743A839B8243948;
 		};
 		B91D1E3A79609A8AAE77087A = {
 			isa = PBXBuildFile;
@@ -263,6 +283,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 3FF5336FD5D9D57BED527C38;
 			remoteInfo = HCGSentinel;
+		};
+		E7DB36256726E37DED85D956 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CFF32A4E65AA1ACDBAD95ACA;
+			proxyType = 1;
+			remoteGlobalIDString = 8776530F491B39AE81E90336;
+			remoteInfo = HCGSentinelModern;
 		};
 		129E2D3986154F1EA268EA56 = {
 			isa = PBXFileReference;
@@ -361,6 +388,13 @@
 			lastKnownFileType = sourcecode.swift;
 			path = BluetoothExplorerView.swift;
 			sourceTree = "<group>";
+		};
+		8F93341B3E296739595DF3CA = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.cfbundle;
+			includeInIndex = 0;
+			path = HCGSentinelModernTests.xctest;
+			sourceTree = BUILT_PRODUCTS_DIR;
 		};
 		93361BA16006C6C084CEA5C8 = {
 			isa = PBXFileReference;
@@ -502,6 +536,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		912A6FEB2FFA28F8E0BADB11 = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		95286E2FCCD5BE3D643FB4E6 = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -609,6 +650,7 @@
 				3AA016A11901BA515A6789B9,
 				AAAB233F8B9D0656D03DC2F3,
 				5FDF93948DB1C325BB601E53,
+				8F93341B3E296739595DF3CA,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -691,6 +733,23 @@
 			productReference = AAAB233F8B9D0656D03DC2F3;
 			productType = "com.apple.product-type.application";
 		};
+		B349C814CB8D6C962B143ECF = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40EBD8CA984C863F3FAA1CB7;
+			buildPhases = (
+				19A66DA810C3560251AB8666,
+				912A6FEB2FFA28F8E0BADB11,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EB266CB323E94557918FF81F,
+			);
+			name = HCGSentinelModernTests;
+			productName = HCGSentinelModernTests;
+			productReference = 8F93341B3E296739595DF3CA;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		CFF32A4E65AA1ACDBAD95ACA = {
 			isa = PBXProject;
 			attributes = {
@@ -707,6 +766,10 @@
 					4411DF04F15D67072153D380 = {
 						CreatedOnToolsVersion = 15.0;
 						TestTargetID = 3FF5336FD5D9D57BED527C38;
+					};
+					B349C814CB8D6C962B143ECF = {
+						CreatedOnToolsVersion = 15.0;
+						TestTargetID = 8776530F491B39AE81E90336;
 					};
 				};
 			};
@@ -726,6 +789,7 @@
 				3FF5336FD5D9D57BED527C38,
 				8776530F491B39AE81E90336,
 				4411DF04F15D67072153D380,
+				B349C814CB8D6C962B143ECF,
 			);
 		};
 		0A1AC18FFC80D23A300DD420 = {
@@ -741,6 +805,18 @@
 			buildActionMask = 2147483647;
 			files = (
 				867B2F884CE9E3583F4CFA49,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		19A66DA810C3560251AB8666 = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				87901043FE72E00CACC56565,
+				B544119036F0DFC21280EC85,
+				25473607A8F41989361A9211,
+				35E0E047E8A422E04637F4A9,
+				7D4F6258591AEEAFADF1C9C6,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -829,6 +905,11 @@
 			target = 3FF5336FD5D9D57BED527C38;
 			targetProxy = E14AFF94513A8630C47A3475;
 		};
+		EB266CB323E94557918FF81F = {
+			isa = PBXTargetDependency;
+			target = 8776530F491B39AE81E90336;
+			targetProxy = E7DB36256726E37DED85D956;
+		};
 		12431A5B282500319235D740 = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -846,7 +927,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.7;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -866,6 +947,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.7;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -888,6 +970,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HCGSentinel/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -897,7 +980,6 @@
 				PRODUCT_NAME = HCGSentinelModern;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 			};
 			name = Debug;
 		};
@@ -911,6 +993,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HCGSentinel/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -920,7 +1003,6 @@
 				PRODUCT_NAME = HCGSentinelModern;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 			};
 			name = Release;
 		};
@@ -934,6 +1016,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HCGSentinel/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.7;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -943,6 +1026,31 @@
 				PRODUCT_NAME = HCGSentinel;
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = NO;
+			};
+			name = Debug;
+		};
+		46227F403FD242DE3FDC0A2E = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hcg.sentinel.moderntests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HCGSentinelModern.app/HCGSentinelModern";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					SENTINEL_MODERN_TESTS,
+				);
 			};
 			name = Debug;
 		};
@@ -963,7 +1071,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 14.7;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -989,6 +1097,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.7;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1001,6 +1110,31 @@
 			};
 			name = Debug;
 		};
+		AB78386C12712F27017EF818 = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.hcg.sentinel.moderntests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/HCGSentinelModern.app/HCGSentinelModern";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					SENTINEL_MODERN_TESTS,
+				);
+			};
+			name = Release;
+		};
 		F618E6A3209B9E2217605A4F = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1011,6 +1145,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HCGSentinel/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.7;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1037,6 +1172,15 @@
 			buildConfigurations = (
 				27A0BA0275132FF4CD3530BF,
 				2B60E8FA74D08D8F2E543AA1,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		40EBD8CA984C863F3FAA1CB7 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				46227F403FD242DE3FDC0A2E,
+				AB78386C12712F27017EF818,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

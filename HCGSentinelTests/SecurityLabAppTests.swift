@@ -1,6 +1,10 @@
 import SentinelCore
 import XCTest
+#if SENTINEL_MODERN_TESTS
+@testable import HCGSentinelModern
+#else
 @testable import HCGSentinel
+#endif
 
 final class SecurityLabAppTests: XCTestCase {
     private func waitUntil(_ description: String, timeout: TimeInterval = 30, _ condition: @escaping () -> Bool) {
