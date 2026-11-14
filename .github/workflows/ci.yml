@@ -33,6 +33,8 @@ jobs:
           SENTINEL_EXPOSURE_HTTP: http://127.0.0.1:8081
           SENTINEL_EXPOSURE_HTTPS: https://127.0.0.1:8444
         run: swift test --package-path SentinelCore 2>&1 | tee core-test.log; test ${PIPESTATUS[0]} -eq 0
+      - name: HCG Server contract harness tests
+        run: python3 -m unittest -v Tools/test_hcg_server_assessment_harness.py
       - name: Live assessment output
         if: always()
         run: grep -E "EXPOSURE-CHECK|AUTH-LAB|skipped" core-test.log || true
@@ -146,7 +148,7 @@ jobs:
           for size in ${{ matrix.sizes }}; do
             xcrun simctl ui "$SIMULATOR_UDID" content_size "$size"
             for pass in top end; do
-              for section in dashboard networkcheck network bluetooth radio requests settings capabilities; do
+              for section in dashboard networkcheck securitylab network bluetooth radio requests settings capabilities; do
                 xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
                 sleep 1
                 if [ "$pass" = end ]; then
@@ -164,6 +166,12 @@ jobs:
             xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection networkcheck -SentinelRunNetworkCheck YES
             sleep 60
             xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-run-networkcheck.png"
+            # Security Lab after a real Authentication Defense Lab run against the bundled loopback service.
+            xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+            sleep 1
+            xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection securitylab -SentinelRunAuthLab YES
+            sleep 20
+            xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-run-authlab.png"
           done
           xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
           for file in screenshots/*.png; do sips -Z 1400 "$file" >/dev/null; done

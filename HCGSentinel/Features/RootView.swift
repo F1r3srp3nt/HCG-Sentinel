@@ -63,6 +63,7 @@ struct SectionContent: View {
         case .dashboard: DashboardView()
         case .network: NetworkInspectorView()
         case .networkCheck: NetworkCheckView()
+        case .securityLab: SecurityLabView()
         case .bluetooth: BluetoothExplorerView()
         case .radio: RadioLabView()
         case .requests: RequestComposerView()

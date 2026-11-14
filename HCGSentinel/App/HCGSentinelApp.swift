@@ -28,7 +28,7 @@ struct HCGSentinelApp: App {
                 }
                 .onOpenURL { url in
                     // Deep links navigate only. They can never start an operation.
-                    if let section = DeepLink.section(from: url) { router.open(section) }
+                    router.handle(url)
                 }
         }
     }
@@ -79,6 +79,7 @@ struct ModelInjection: ViewModifier {
             .environmentObject(app.requests)
             .environmentObject(app.helper)
             .environmentObject(app.networkCheck)
+            .environmentObject(app.securityLab)
             .environmentObject(app.connection)
     }
 }

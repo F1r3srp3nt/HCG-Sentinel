@@ -350,8 +350,8 @@ public final class AuthDefenseAssessment {
             }
         } else if stoppedByError {
             add("lockout", lockoutTitle, .inconclusive, "\(expectedLockout) The test stopped early (see errors), so lockout could not be measured.")
-        } else if case .throttled = stopReason, let want = expected.lockoutAfter, failuresBeforeStop < want {
-            add("lockout", lockoutTitle, .inconclusive, "\(expectedLockout) Throttling stopped the test after \(failuresBeforeStop) failures, before a lockout could occur.")
+        } else if case .throttled = stopReason {
+            add("lockout", lockoutTitle, .inconclusive, "\(expectedLockout) Throttling stopped the test after \(failuresBeforeStop) failures, before lockout could be judged. Turn rate limiting off in the lab to measure lockout.")
         } else if let want = expected.lockoutAfter, failuresBeforeStop <= want {
             add("lockout", lockoutTitle, .inconclusive, "\(expectedLockout) Only \(failuresBeforeStop) failures fit within the cap, so the threshold could not be crossed. Raise the cap to verify it.")
         } else if failuresBeforeStop < 3 {

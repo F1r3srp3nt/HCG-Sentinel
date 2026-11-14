@@ -10,6 +10,7 @@ struct DashboardView: View {
     @EnvironmentObject private var radio: RadioModel
     @EnvironmentObject private var requests: RequestModel
     @EnvironmentObject private var check: NetworkCheckModel
+    @EnvironmentObject private var lab: SecurityLabModel
     @Environment(\.sizeCategory) private var sizeCategory
 
     private let statusColumns = [GridItem(.adaptive(minimum: 300), spacing: 14, alignment: .top)]
@@ -35,6 +36,7 @@ struct DashboardView: View {
             SectionLabel(text: "Quick access")
             LazyVGrid(columns: tileColumns, spacing: 12) {
                 tile(.networkCheck, status: checkStatus)
+                tile(.securityLab, status: securityLabStatus)
                 tile(.network, status: networkStatus)
                 tile(.bluetooth, status: bluetoothStatus)
                 tile(.radio, status: radioStatus)
@@ -217,6 +219,12 @@ struct DashboardView: View {
         if check.isRunning { return "Checking…" }
         if let report = check.report { return report.headline }
         return "Not run yet"
+    }
+
+    private var securityLabStatus: String {
+        if let module = lab.running { return "\(module.title) running…" }
+        if let latest = lab.reports.first { return "\(latest.module.title): \(latest.headline)" }
+        return "Secrets, exposure and login defences"
     }
 
     private var networkStatus: String {

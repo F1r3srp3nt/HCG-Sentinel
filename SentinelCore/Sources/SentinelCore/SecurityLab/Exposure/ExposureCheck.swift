@@ -243,6 +243,8 @@ public final class ExposureCheck {
         case .failure(let failure):
             if failure.isTLS {
                 set("reachability", title("reachability"), .inconclusive, "The TLS handshake failed, so no HTTP response was received. See the TLS check.")
+            } else if failure.kind == .blockedByPlatform {
+                set("reachability", title("reachability"), .unsupported, "Not tested on this platform: \(failureText(failure)). Enter the https:// address instead.")
             } else {
                 set("reachability", title("reachability"), .failedToExecute, "No response: \(failureText(failure))")
                 record.errors.append("\(target.host): \(failureText(failure))")
@@ -330,6 +332,7 @@ public final class ExposureCheck {
         case .refused: return "the connection was refused"
         case .network: return "the network was unavailable (\(failure.message))"
         case .cancelled: return "cancelled"
+        case .blockedByPlatform: return "iOS App Transport Security does not let apps send plain-HTTP requests to public hosts"
         case .tlsUntrusted, .tlsOther: return "the TLS handshake failed (\(failure.message))"
         case .other: return failure.message
         }
@@ -449,6 +452,8 @@ public final class ExposureCheck {
             switch failure.kind {
             case .refused:
                 set("https", title("https"), .passed, "Nothing answered plain HTTP on \(target.host):\(url.port ?? 80), so there is no unencrypted version to redirect.")
+            case .blockedByPlatform:
+                set("https", title("https"), .unsupported, "Not tested on this platform: \(failureText(failure)).")
             case .timeout:
                 set("https", title("https"), .inconclusive, "Plain HTTP on \(target.host):\(url.port ?? 80) timed out; it may be filtered or slow.")
             default:

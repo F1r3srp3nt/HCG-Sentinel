@@ -65,7 +65,7 @@ public struct HTTPProbeResponse: Equatable {
 
 public struct HTTPProbeFailure: Equatable, Error {
     public enum Kind: String, Equatable {
-        case dns, timeout, refused, tlsUntrusted, tlsOther, network, cancelled, other
+        case dns, timeout, refused, tlsUntrusted, tlsOther, network, cancelled, blockedByPlatform, other
     }
 
     public var kind: Kind
@@ -88,6 +88,7 @@ public struct HTTPProbeFailure: Equatable, Error {
         let kind: Kind
         switch code {
         case -999: kind = .cancelled
+        case -1022: kind = .blockedByPlatform // App Transport Security refused a plain-HTTP load
         case -1001: kind = .timeout
         case -1003, -1006: kind = .dns
         case -1004: kind = lower.contains("certificate") || lower.contains("ssl") ? .tlsOther : .refused

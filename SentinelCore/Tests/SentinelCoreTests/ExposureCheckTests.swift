@@ -408,3 +408,18 @@ final class ExposureCheckLiveTests: XCTestCase {
         XCTAssertTrue(response.bodyTruncated)
     }
 }
+
+final class ExposurePlatformLimitTests: XCTestCase {
+    func testAppTransportSecurityBlockIsUnsupportedNotAFinding() throws {
+        let transport = MockExposureTransport()
+        transport.dns["shop.example.com"] = .success(["93.184.215.14"])
+        transport.routes["http://shop.example.com/"] = .failure(HTTPProbeFailure.classify(code: -1022, message: "The resource could not be loaded because the App Transport Security policy requires the use of a secure connection."))
+        transport.routes["https://shop.example.com/"] = .response(HTTPProbeResponse(status: 200, headers: ["Content-Type": "text/html"]))
+        var configuration = ExposureCheckConfiguration()
+        configuration.minRequestInterval = 0
+        let scope = try TargetScope.parse([(text: "https://shop.example.com/", localNetwork: false)])
+        let record = ExposureCheck(transport: transport, configuration: configuration).run(scope: scope, control: AssessmentControl(timeout: 30))
+        XCTAssertEqual(record.checks.first { $0.id.hasPrefix("https@") }?.outcome, .unsupported)
+        XCTAssertFalse(record.findings.contains { $0.checkID == "https" })
+    }
+}

@@ -30,6 +30,7 @@ final class AppModel: ObservableObject {
     let requests: RequestModel
     let helper: HelperModel
     let networkCheck: NetworkCheckModel
+    let securityLab: SecurityLabModel
 
     private let store: SettingsStore
     private var timer: Timer?
@@ -57,6 +58,8 @@ final class AppModel: ObservableObject {
         requests = RequestModel(transport: URLSessionHTTPTransport(), log: log, registry: registry)
         helper = HelperModel(log: log, registry: registry)
         networkCheck = NetworkCheckModel(probe: PlatformNetworkProbe(), log: log, registry: registry)
+        securityLab = SecurityLabModel(store: SecurityReportStore(directory: support.appendingPathComponent("SecurityLab/Reports", isDirectory: true)),
+                                       log: log, registry: registry)
 
         registry.onChange = { [weak self] in self?.capabilities = self?.registry.states ?? [] }
         log.onChange = { [weak self] in
@@ -69,7 +72,8 @@ final class AppModel: ObservableObject {
 
         registerOperations()
         for model in [bluetooth.objectWillChange, network.objectWillChange, radio.objectWillChange,
-                      requests.objectWillChange, helper.objectWillChange, networkCheck.objectWillChange] {
+                      requests.objectWillChange, helper.objectWillChange, networkCheck.objectWillChange,
+                      securityLab.objectWillChange] {
             model.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshOperations() }.store(in: &cancellables)
         }
 
@@ -121,6 +125,12 @@ final class AppModel: ObservableObject {
         operations.register(OperationHandle(id: "networkcheck", title: "Network check",
                                             isActive: { [networkCheck] in networkCheck.isRunning },
                                             stop: { [networkCheck] in networkCheck.cancel() }))
+        operations.register(OperationHandle(id: "securitylab", title: "Security Lab assessment",
+                                            isActive: { [securityLab] in securityLab.isRunning },
+                                            stop: { [securityLab] in securityLab.stop(reason: "Stopped by Stop All Operations") }))
+        operations.register(OperationHandle(id: "authlab", title: "Authentication lab service",
+                                            isActive: { [securityLab] in securityLab.labIsRunning },
+                                            stop: { [securityLab] in securityLab.stopLab() }))
         operations.register(OperationHandle(id: "import", title: "Capture import",
                                             isActive: { [network] in network.isParsing },
                                             stop: { [network] in network.cancelImport() }))
@@ -177,6 +187,7 @@ final class AppModel: ObservableObject {
         bluetooth.apply(settings)
         network.apply(settings)
         networkCheck.apply(settings)
+        securityLab.apply(settings)
         radio.apply(settings)
         requests.apply(settings)
         helper.apply(settings)
@@ -191,6 +202,10 @@ final class AppModel: ObservableObject {
         registry.setUserEnabled(.nearbyWifiDiscovery, settings.remoteConnectionsEnabled && settings.scanningEnabled)
         registry.setUserEnabled(.helperLink, settings.remoteConnectionsEnabled)
         registry.setUserEnabled(.trafficFiltering, settings.remoteConnectionsEnabled)
+        registry.setUserEnabled(.secretScanning, true)
+        registry.setUserEnabled(.exposureCheck, settings.remoteConnectionsEnabled)
+        registry.setUserEnabled(.authDefenseLab, true)
+        registry.setUserEnabled(.serverAssessments, false)
     }
 
     // MARK: Diagnostics
@@ -215,12 +230,26 @@ final class AppModel: ObservableObject {
     }
 
     var verifiedCapabilityCount: Int { capabilities.filter { $0.readiness == .verified }.count }
+
+    /// Status for HCG surfaces such as Nexus: counts, labels and report references only. Nexus has no Sentinel
+    /// integration yet and Sentinel has no App Group, so this is built on request and not written anywhere.
+    func statusSnapshot(now: Date = Date()) -> NexusStatusSnapshot {
+        NexusStatusSnapshot(generatedAt: now, activeOperations: activeOperations, verifiedCapabilities: verifiedCapabilityCount,
+                            totalCapabilities: capabilities.count, previewMode: settings.previewMode,
+                            recentAssessments: securityLab.references)
+    }
+}
+
+/// A report a link asked to open. Opening only shows the stored report.
+struct ReportLink: Identifiable, Equatable {
+    let id: UUID
 }
 
 /// Navigation state shared by the compact (tab) and regular (sidebar) layouts.
 final class Router: ObservableObject {
     @Published var section: SentinelSection = .dashboard
     @Published var sheet: SentinelSection?
+    @Published var pendingReport: ReportLink?
     var isCompact = true
 
     static let tabSections: [SentinelSection] = [.dashboard, .network, .bluetooth, .radio, .requests]
@@ -232,6 +261,21 @@ final class Router: ObservableObject {
         } else {
             sheet = nil
             section = target
+        }
+    }
+
+    /// Opens Security Lab with the stored report on top. Never runs anything.
+    func openReport(_ id: UUID) {
+        open(.securityLab)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { self.pendingReport = ReportLink(id: id) }
+    }
+
+    /// Handles `hcgsentinel://` links: navigation and report review only.
+    func handle(_ url: URL) {
+        switch DeepLink.target(from: url) {
+        case .section(let section)?: open(section)
+        case .report(let id)?: openReport(id)
+        case nil: break
         }
     }
 
@@ -249,6 +293,7 @@ extension SentinelSection {
         case .dashboard: return "square.grid.2x2"
         case .network: return "network"
         case .networkCheck: return "checkmark.shield"
+        case .securityLab: return "shield.lefthalf.fill"
         case .bluetooth: return "dot.radiowaves.left.and.right"
         case .radio: return "antenna.radiowaves.left.and.right"
         case .requests: return "paperplane"
@@ -262,6 +307,7 @@ extension SentinelSection {
         case .dashboard: return "Dashboard"
         case .network: return "Network"
         case .networkCheck: return "Check"
+        case .securityLab: return "Security Lab"
         case .bluetooth: return "Bluetooth"
         case .radio: return "Radio"
         case .requests: return "Requests"

@@ -7,6 +7,7 @@ enum Keychain {
     enum Item: String {
         case nodePairingKey = "radio-node-pairing-key"
         case helperPairingKey = "helper-pairing-key"
+        case secretFingerprintKey = "secret-scanner-fingerprint-key"
     }
 
     private static let service = "com.hcg.sentinel"
