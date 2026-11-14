@@ -69,22 +69,30 @@ jobs:
           grep -q "BUILD SUCCEEDED" sim.log
 
   both-targets:
-    name: Both app targets in one build · Xcode 26.6
+    name: Both app targets side by side · Xcode 26.6
     runs-on: macos-26
     timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
-      - name: Build all targets together (as a tool that ignores schemes would)
+      - name: Every target has its own product
+        # Both app targets used to produce HCGSentinel.app ("Multiple commands produce …"). Building with
+        # -alltargets cannot verify this here: without a scheme, xcodebuild does not build the local SentinelCore
+        # package and stops with "Unable to resolve module dependency". The product names are checked directly.
         run: |
-          xcodebuild build -project HCGSentinel.xcodeproj -alltargets -configuration Release -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee all.log | grep -E "error:|Multiple commands|BUILD (SUCCEEDED|FAILED)" || true
-          grep -q "BUILD SUCCEEDED" all.log
-      - name: Both schemes into one derived-data folder, one after the other
+          xcodebuild -project HCGSentinel.xcodeproj -alltargets -configuration Release -showBuildSettings 2>/dev/null \
+            | grep -E "^ *FULL_PRODUCT_NAME = " | sed 's/^ *//' | tee products.txt
+          test "$(wc -l < products.txt)" -eq 3
+          test -z "$(sort products.txt | uniq -d)" || { echo "Two targets share a product:"; sort products.txt | uniq -d; exit 1; }
+      - name: Both schemes into one derived-data folder
         run: |
+          set -o pipefail
           for scheme in HCGSentinel HCGSentinelModern; do
             xcodebuild build -project HCGSentinel.xcodeproj -scheme "$scheme" -configuration Release -destination 'generic/platform=iOS' \
               -derivedDataPath "$RUNNER_TEMP/shared" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tail -1
-            find "$RUNNER_TEMP/shared/Build/Products" -maxdepth 2 -name "*.app" -type d -exec sh -c 'echo "$1: $(plutil -extract MinimumOSVersion raw "$1/Info.plist")"' _ {} \;
+          done
+          for app in HCGSentinel HCGSentinelModern; do
+            path="$RUNNER_TEMP/shared/Build/Products/Release-iphoneos/$app.app"
+            echo "$app.app: minimum iOS $(plutil -extract MinimumOSVersion raw "$path/Info.plist"), bundle $(plutil -extract CFBundleIdentifier raw "$path/Info.plist")"
           done
