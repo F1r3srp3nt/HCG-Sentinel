@@ -1,0 +1,87 @@
+name: Build matrix
+
+# Builds every shared scheme in Debug and Release, for a generic iOS device and for the simulator, unsigned, with
+# explicitly selected Xcode versions. It also records the effective settings each target resolves to, and checks
+# what happens when both app targets are built together. Nothing is signed, exported or uploaded.
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-matrix-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.scheme }} · ${{ matrix.configuration }} · Xcode ${{ matrix.xcode }}
+    strategy:
+      fail-fast: false
+      matrix:
+        xcode: ["16.4", "26.6"]
+        scheme: [HCGSentinel, HCGSentinelModern]
+        configuration: [Debug, Release]
+        include:
+          - { xcode: "16.4", runner: macos-15 }
+          - { xcode: "26.6", runner: macos-26 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: |
+          app="/Applications/Xcode_${{ matrix.xcode }}.app"
+          test -d "$app" || { echo "Xcode ${{ matrix.xcode }} is not installed. Installed:"; ls -d /Applications/Xcode*.app; exit 1; }
+          echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+      - name: Effective settings
+        run: |
+          xcodebuild -version
+          xcodebuild -list -project HCGSentinel.xcodeproj
+          xcodebuild -project HCGSentinel.xcodeproj -scheme "${{ matrix.scheme }}" -configuration "${{ matrix.configuration }}" \
+            -destination 'generic/platform=iOS' -showBuildSettings 2>/dev/null \
+            | grep -E "^ *(TARGET_NAME|PRODUCT_NAME|PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|SWIFT_ACTIVE_COMPILATION_CONDITIONS|SWIFT_OPTIMIZATION_LEVEL|CODE_SIGN_ENTITLEMENTS|ENABLE_TESTABILITY|VALIDATE_PRODUCT|ONLY_ACTIVE_ARCH|ARCHS) ="
+      - name: Device build (generic iOS, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build -project HCGSentinel.xcodeproj -scheme "${{ matrix.scheme }}" -configuration "${{ matrix.configuration }}" \
+            -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/dd-device" \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee device.log | grep -E "error:|warning: .*deployment|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" device.log
+          app=$(find "$RUNNER_TEMP/dd-device/Build/Products" -maxdepth 2 -name "*.app" -type d | head -1)
+          echo "Built: $app"
+          plutil -extract MinimumOSVersion raw "$app/Info.plist"
+          plutil -extract CFBundleIdentifier raw "$app/Info.plist"
+          lipo -info "$app/$(plutil -extract CFBundleExecutable raw "$app/Info.plist")"
+      - name: Simulator build
+        run: |
+          set -o pipefail
+          xcodebuild build -project HCGSentinel.xcodeproj -scheme "${{ matrix.scheme }}" -configuration "${{ matrix.configuration }}" \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/dd-sim" \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee sim.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" sim.log
+
+  both-targets:
+    name: Both app targets in one build · Xcode 26.6
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build all targets together (as a tool that ignores schemes would)
+        run: |
+          xcodebuild build -project HCGSentinel.xcodeproj -alltargets -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee all.log | grep -E "error:|Multiple commands|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" all.log
+      - name: Both schemes into one derived-data folder, one after the other
+        run: |
+          for scheme in HCGSentinel HCGSentinelModern; do
+            xcodebuild build -project HCGSentinel.xcodeproj -scheme "$scheme" -configuration Release -destination 'generic/platform=iOS' \
+              -derivedDataPath "$RUNNER_TEMP/shared" CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tail -1
+            find "$RUNNER_TEMP/shared/Build/Products" -maxdepth 2 -name "*.app" -type d -exec sh -c 'echo "$1: $(plutil -extract MinimumOSVersion raw "$1/Info.plist")"' _ {} \;
+          done
