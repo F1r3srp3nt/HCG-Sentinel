@@ -22,10 +22,18 @@ public struct BluetoothAdvertisement: Equatable {
     public var txPower: Int?
     /// dBm. 127 means the platform could not provide a reading.
     public var rssi: Int
+    /// Raw manufacturer-specific data (company ID first), capped at 64 bytes.
+    public var manufacturerData: [UInt8]?
+    /// Service data keyed by service UUID, each capped at 32 bytes.
+    public var serviceData: [String: [UInt8]]
+    /// Services in the "overflow" area (iOS background advertisers) and services the device asks for.
+    public var overflowServiceUUIDs: [String]
+    public var solicitedServiceUUIDs: [String]
 
     public init(identifier: UUID, name: String? = nil, localName: String? = nil, serviceUUIDs: [String] = [],
                 manufacturerID: UInt16? = nil, manufacturerDataLength: Int? = nil, isConnectable: Bool? = nil,
-                txPower: Int? = nil, rssi: Int) {
+                txPower: Int? = nil, rssi: Int, manufacturerData: [UInt8]? = nil, serviceData: [String: [UInt8]] = [:],
+                overflowServiceUUIDs: [String] = [], solicitedServiceUUIDs: [String] = []) {
         self.identifier = identifier
         self.name = name
         self.localName = localName
@@ -35,6 +43,44 @@ public struct BluetoothAdvertisement: Equatable {
         self.isConnectable = isConnectable
         self.txPower = txPower
         self.rssi = rssi
+        self.manufacturerData = manufacturerData.map { Array($0.prefix(64)) }
+        self.serviceData = serviceData.mapValues { Array($0.prefix(32)) }
+        self.overflowServiceUUIDs = overflowServiceUUIDs
+        self.solicitedServiceUUIDs = solicitedServiceUUIDs
+    }
+
+    /// A non-empty, trimmed text value, or nil. Empty names in advertisements must not erase known ones.
+    static func clean(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(64))
+    }
+}
+
+/// Where the name shown for a device comes from.
+public enum BluetoothNameSource: Equatable {
+    /// A label the user assigned on this phone.
+    case userLabel(String)
+    /// The local name in the device's own advertisement.
+    case advertised(String)
+    /// A name iOS remembers for this identifier (for example from an earlier connection by another app).
+    case system(String)
+    /// The device broadcast no name.
+    case notBroadcast
+
+    public var text: String {
+        switch self {
+        case .userLabel(let name), .advertised(let name), .system(let name): return name
+        case .notBroadcast: return "Name not broadcast"
+        }
+    }
+
+    public var explanation: String {
+        switch self {
+        case .userLabel: return "Your label on this phone. The device did not choose it."
+        case .advertised: return "Name in the device's advertisement. Any device can broadcast any name."
+        case .system: return "Name iOS reports for this identifier. It may come from an earlier connection, not from the current advertisement."
+        case .notBroadcast: return "Many devices do not broadcast a name. That alone says nothing about what the device is or whether it is a concern."
+        }
     }
 }
 
@@ -52,6 +98,17 @@ public struct DiscoveredPeripheral: Identifiable, Equatable {
     public var firstSeen: Date
     public var lastSeen: Date
     public var sightings: Int
+    /// When the current `rssi` was received.
+    public var rssiAt: Date?
+    /// The most recent valid readings, newest last (at most 12).
+    public var recentRSSI: [Int] = []
+    public var manufacturerData: [UInt8]?
+    public var serviceData: [String: [UInt8]] = [:]
+    public var overflowServiceUUIDs: [String] = []
+    public var solicitedServiceUUIDs: [String] = []
+    /// Scan session in which the device was last heard (see `BluetoothScanController.scanNumber`).
+    public var lastScan: Int = 0
+    public var sightingsInLastScan: Int = 0
 
     public init(id: UUID, name: String? = nil, localName: String? = nil, serviceUUIDs: [String] = [],
                 manufacturerID: UInt16? = nil, manufacturerDataLength: Int? = nil, isConnectable: Bool? = nil,
@@ -70,10 +127,28 @@ public struct DiscoveredPeripheral: Identifiable, Equatable {
         self.sightings = sightings
     }
 
-    public var displayName: String {
-        if let localName = localName, !localName.isEmpty { return localName }
-        if let name = name, !name.isEmpty { return name }
-        return "Unnamed device"
+    /// Name and where it comes from: user label, then advertised name, then the name iOS knows, else "not broadcast".
+    public func nameSource(label: String?) -> BluetoothNameSource {
+        if let label = BluetoothAdvertisement.clean(label) { return .userLabel(label) }
+        if let local = BluetoothAdvertisement.clean(localName) { return .advertised(local) }
+        if let system = BluetoothAdvertisement.clean(name) { return .system(system) }
+        return .notBroadcast
+    }
+
+    public var displayName: String { nameSource(label: nil).text }
+
+    public var hasBroadcastName: Bool { BluetoothAdvertisement.clean(localName) != nil || BluetoothAdvertisement.clean(name) != nil }
+
+    /// Every advertised service, including overflow-area services, without duplicates.
+    public var allServiceUUIDs: [String] {
+        var all = serviceUUIDs
+        for uuid in overflowServiceUUIDs + Array(serviceData.keys).sorted() where !all.contains(uuid) { all.append(uuid) }
+        return all
+    }
+
+    public var rssiRange: ClosedRange<Int>? {
+        guard let low = recentRSSI.min(), let high = recentRSSI.max() else { return nil }
+        return low...high
     }
 
     /// Coarse description of received signal strength. Not a distance estimate.
@@ -176,6 +251,8 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
     public private(set) var state: BluetoothScanState = .idle
     public private(set) var peripherals: [UUID: DiscoveredPeripheral] = [:]
     public private(set) var autoStopDeadline: Date?
+    /// Increments each time a scan actually starts. 0 means no scan has run yet.
+    public private(set) var scanNumber = 0
     public var isEnabledInSettings = false
     public var allowDuplicates = false
     /// Seconds after which a scan stops by itself; 0 disables the limit.
@@ -263,36 +340,57 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
         guard case .scanning = state else { return }
         let time = now()
         let reading = (advertisement.rssi == 127 || advertisement.rssi > 20 || advertisement.rssi < -127) ? nil : advertisement.rssi
-        if var existing = peripherals[advertisement.identifier] {
-            existing.name = advertisement.name ?? existing.name
-            existing.localName = advertisement.localName ?? existing.localName
-            for uuid in advertisement.serviceUUIDs where !existing.serviceUUIDs.contains(uuid) {
-                existing.serviceUUIDs.append(uuid)
-            }
-            existing.manufacturerID = advertisement.manufacturerID ?? existing.manufacturerID
-            existing.manufacturerDataLength = advertisement.manufacturerDataLength ?? existing.manufacturerDataLength
-            existing.isConnectable = advertisement.isConnectable ?? existing.isConnectable
-            existing.txPower = advertisement.txPower ?? existing.txPower
-            existing.rssi = reading ?? existing.rssi
-            existing.lastSeen = time
-            existing.sightings += 1
-            peripherals[advertisement.identifier] = existing
+        var device: DiscoveredPeripheral
+        if let existing = peripherals[advertisement.identifier] {
+            device = existing
         } else {
             if peripherals.count >= BluetoothScanController.maxPeripherals,
                let oldest = peripherals.values.min(by: { $0.lastSeen < $1.lastSeen }) {
                 peripherals.removeValue(forKey: oldest.id)
             }
-            peripherals[advertisement.identifier] = DiscoveredPeripheral(
-                id: advertisement.identifier, name: advertisement.name, localName: advertisement.localName,
-                serviceUUIDs: advertisement.serviceUUIDs, manufacturerID: advertisement.manufacturerID,
-                manufacturerDataLength: advertisement.manufacturerDataLength, isConnectable: advertisement.isConnectable,
-                txPower: advertisement.txPower, rssi: reading, firstSeen: time, lastSeen: time, sightings: 1)
+            device = DiscoveredPeripheral(id: advertisement.identifier, rssi: nil, firstSeen: time, lastSeen: time, sightings: 0)
         }
+        BluetoothScanController.merge(advertisement, reading: reading, at: time, scan: scanNumber, into: &device)
+        peripherals[advertisement.identifier] = device
         if !discoveredDuringScan {
             discoveredDuringScan = true
             onFirstDiscovery?()
         }
         onChange?()
+    }
+
+    /// Folds one advertisement into what is known about a device. Fields an advertisement leaves out (names,
+    /// services, manufacturer data, TX power, connectable flag) keep their earlier values: advertisements and scan
+    /// responses often carry different parts, and omission is not evidence that something went away.
+    static func merge(_ ad: BluetoothAdvertisement, reading: Int?, at time: Date, scan: Int, into device: inout DiscoveredPeripheral) {
+        if let name = BluetoothAdvertisement.clean(ad.name) { device.name = name }
+        if let local = BluetoothAdvertisement.clean(ad.localName) { device.localName = local }
+        for uuid in ad.serviceUUIDs where !device.serviceUUIDs.contains(uuid) && device.serviceUUIDs.count < 32 { device.serviceUUIDs.append(uuid) }
+        for uuid in ad.overflowServiceUUIDs where !device.overflowServiceUUIDs.contains(uuid) && device.overflowServiceUUIDs.count < 32 {
+            device.overflowServiceUUIDs.append(uuid)
+        }
+        for uuid in ad.solicitedServiceUUIDs where !device.solicitedServiceUUIDs.contains(uuid) && device.solicitedServiceUUIDs.count < 32 {
+            device.solicitedServiceUUIDs.append(uuid)
+        }
+        for (uuid, data) in ad.serviceData where device.serviceData[uuid] != nil || device.serviceData.count < 16 { device.serviceData[uuid] = data }
+        if let id = ad.manufacturerID { device.manufacturerID = id }
+        if let length = ad.manufacturerDataLength { device.manufacturerDataLength = length }
+        if let data = ad.manufacturerData { device.manufacturerData = data }
+        if let connectable = ad.isConnectable { device.isConnectable = connectable }
+        if let power = ad.txPower { device.txPower = power }
+        if let reading = reading {
+            device.rssi = reading
+            device.rssiAt = time
+            device.recentRSSI.append(reading)
+            if device.recentRSSI.count > 12 { device.recentRSSI.removeFirst(device.recentRSSI.count - 12) }
+        }
+        if device.lastScan != scan {
+            device.lastScan = scan
+            device.sightingsInLastScan = 0
+        }
+        device.sightingsInLastScan += 1
+        device.lastSeen = time
+        device.sightings += 1
     }
 
     // MARK: Internals
@@ -302,6 +400,7 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
         case .poweredOn:
             if case .scanning = state { return }
             discoveredDuringScan = false
+            scanNumber += 1
             central.startScan(allowDuplicates: allowDuplicates)
             let started = now()
             autoStopDeadline = autoStopInterval > 0 ? started.addingTimeInterval(autoStopInterval) : nil
