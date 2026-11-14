@@ -163,7 +163,7 @@ struct CheckRow: View {
 }
 
 /// Evidence first; severity and confidence are separate labels.
-struct FindingCard: View {
+struct SecurityFindingCard: View {
     let finding: SecurityFinding
     var onSuppress: ((String) -> Void)?
 

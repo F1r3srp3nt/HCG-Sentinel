@@ -173,7 +173,7 @@ struct SecurityReportView: View {
                 Explanation("These checks found nothing to report. That is not proof that nothing is wrong; see the limitations below.")
             }
             ForEach(record.findings.sorted { $0.severity > $1.severity }) { finding in
-                FindingCard(finding: finding, onSuppress: record.module == .secretScanner ? { lab.suppress($0) } : nil)
+                SecurityFindingCard(finding: finding, onSuppress: record.module == .secretScanner ? { lab.suppress($0) } : nil)
             }
             if record.suppressedCount > 0 {
                 Explanation("\(record.suppressedCount) finding(s) were hidden because they were marked as false positives.")
