@@ -5,6 +5,20 @@ What has actually been checked, and how. "Not done" means exactly that.
 Sources: CI runs on GitHub Actions. Complete logs and `.xcresult` bundles are attached to each *Archive check*
 run as artifacts: <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/workflows/archive.yml>
 
+## Repair: build targets, Bluetooth discovery, truthful capabilities
+
+| What | How it was checked | Result |
+| --- | --- | --- |
+| Difference between `HCGSentinel` and `HCGSentinelModern` | Every build phase and every Debug/Release setting of both targets compared from `project.pbxproj` | Same 27 sources, resources, Info.plist, package, bundle ID and settings; only the minimum iOS differs (14.7 / 15.0). No entitlements in either. |
+| Both targets producing `HCGSentinel.app` | Reproduced in CI: `xcodebuild -alltargets` → `Multiple commands produce …/HCGSentinel.app` | Fixed: the modern target builds `HCGSentinelModern.app`. CI checks every target has its own product and builds both schemes into one derived-data folder. |
+| Every scheme × Debug/Release, device and Simulator | CI build matrix, unsigned, Xcode 26.6 (both schemes) and 16.4 (modern) | All succeeded. Built apps: `HCGSentinel.app` minimum iOS 14.7, `HCGSentinelModern.app` 15.0. |
+| Device Debug build and Release archive, legacy and modern | Archive check (`Tools/build.sh device`, `archive`, `inspect`), Xcode 16.4 and 26.6 | Succeeded; arm64; Mach-O `minos` 14.7 (legacy) and 15.0 (modern). |
+| Maker reads the project correctly | Maker's analyzer and readiness code read at commit 660fcc3 (not executed: no .NET SDK in this environment) | Deployment targets and schemes read correctly; one cosmetic misread (no "Swift packages" label), see MAKER.md. |
+| Bluetooth merge, name sources, scan sessions, filters, labels, permission and radio states | `BluetoothScanTests`, `BluetoothDiscoveryQualityTests` (Linux and macOS), `BluetoothModelTests` (app, Simulator) | Passed. **Fixtures only**: a fake Bluetooth central, no radio. |
+| Feasibility items can never run or verify | `CapabilityTests.testFeasibilityItemsCanNeverRunOrVerify` | Passed. |
+| Bluetooth Explorer, dashboard banner, capabilities at default and largest accessibility text | CI screenshots (iPhone and iPad, Simulator) | Reviewed: readable, no clipped text; Simulator has no Bluetooth, so no live devices appear. |
+| **Real-device Bluetooth discovery** | Needs a physical iPhone | **Not tested.** No device is available to this environment. Checklist: TESTING.md, common checklist item 2. |
+
 ## Upgrade: banner, Check My Network, authenticated node protocol, switches (commit 533449e)
 
 | Item | Status |

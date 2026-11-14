@@ -8,14 +8,20 @@ public enum CapabilityTier: String, CaseIterable, Codable {
     case externalNode
     /// A separately installed, compatible privileged helper.
     case privilegedHelper
+    /// Ideas under investigation. Nothing is implemented, and nothing here can be enabled or verified.
+    case feasibility
 
     public var title: String {
         switch self {
         case .onDevice: return "On this device"
         case .externalNode: return "External Mac or radio node"
         case .privilegedHelper: return "Privileged helper"
+        case .feasibility: return "Feasibility research"
         }
     }
+
+    /// Tiers that hold working or interface-defined capabilities (everything except feasibility research).
+    public static let operational: [CapabilityTier] = [.onDevice, .externalNode, .privilegedHelper]
 }
 
 public enum CapabilityID: String, CaseIterable, Codable {
@@ -35,6 +41,9 @@ public enum CapabilityID: String, CaseIterable, Codable {
     case exposureCheck
     case authDefenseLab
     case serverAssessments
+    case satelliteAccess
+    case radioModification
+    case watchScanning
 }
 
 /// Whether Sentinel ships working code for the capability.

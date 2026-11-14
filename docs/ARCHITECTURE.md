@@ -59,6 +59,11 @@ Every feature belongs to exactly one tier (`CapabilityTier`):
 3. **Privileged helper** – a separately installed helper on a compatible device: the helper link, and the future
    device-wide capture and traffic filtering operations.
 
+A fourth tier, **Feasibility research**, lists satellite access, radio or baseband modification and Apple Watch
+scanning. They are recorded only so their status is visible: none is implemented, none can be enabled or verified,
+and they are left out of the dashboard's "confirmed" count.
+
+
 ## Four facts per capability
 
 `CapabilityRegistry` tracks, independently, for each capability:

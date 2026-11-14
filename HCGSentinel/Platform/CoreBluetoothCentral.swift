@@ -68,8 +68,19 @@ final class CoreBluetoothCentral: NSObject, BluetoothCentral, CBCentralManagerDe
         if let services = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] {
             advertisement.serviceUUIDs = services.map { $0.uuidString }
         }
+        if let overflow = advertisementData[CBAdvertisementDataOverflowServiceUUIDsKey] as? [CBUUID] {
+            advertisement.overflowServiceUUIDs = overflow.map { $0.uuidString }
+        }
+        if let solicited = advertisementData[CBAdvertisementDataSolicitedServiceUUIDsKey] as? [CBUUID] {
+            advertisement.solicitedServiceUUIDs = solicited.map { $0.uuidString }
+        }
+        if let serviceData = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] {
+            advertisement.serviceData = Dictionary(serviceData.prefix(16).map { ($0.key.uuidString, [UInt8]($0.value.prefix(32))) },
+                                                   uniquingKeysWith: { first, _ in first })
+        }
         if let manufacturer = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
             advertisement.manufacturerDataLength = manufacturer.count
+            advertisement.manufacturerData = [UInt8](manufacturer.prefix(64))
             if manufacturer.count >= 2 {
                 let bytes = [UInt8](manufacturer.prefix(2))
                 advertisement.manufacturerID = UInt16(bytes[0]) | UInt16(bytes[1]) << 8

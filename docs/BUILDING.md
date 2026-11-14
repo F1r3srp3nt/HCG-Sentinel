@@ -24,6 +24,7 @@ the debugger (see "Installing an IPA" below). Building for a 14.7 deployment tar
 | `Tools/build.sh range` | Asks the selected Xcode which deployment targets it supports. |
 | `Tools/build.sh test-core` | Core tests on the Mac. |
 | `Tools/build.sh simulator` | Unsigned Simulator build. |
+| `Tools/build.sh device` | Debug build for an iPhone or iPad: generic, or a connected device with `DEVICE_ID`. Signed when `DEVELOPMENT_TEAM` is set. |
 | `Tools/build.sh archive` | Archive for a generic iOS device. Signed when `DEVELOPMENT_TEAM` is set, otherwise unsigned. |
 | `Tools/build.sh inspect` | Architecture, minimum OS, resources, embedded components and signature of the archived app. |
 | `Tools/build.sh export` | Development IPA from a signed archive. |
@@ -32,17 +33,75 @@ Set `FLAVOR=modern` for the iOS 15+ variant and `DEVELOPER_DIR` to choose an Xco
 result bundles to `build/*.xcresult`. Building through HCG Executable Maker is described in
 [MAKER.md](MAKER.md).
 
-## Two variants of the same app
+## The two targets, exactly
 
-| Scheme / target | Minimum iOS | Use it when |
+These facts were checked mechanically against `HCGSentinel.xcodeproj` (every build phase and every Debug and Release
+setting of both targets compared). "Modern" is **not** a superset of anything: it is the same app with a higher
+minimum iOS.
+
+| | `HCGSentinel` | `HCGSentinelModern` |
 | --- | --- | --- |
-| `HCGSentinel` | 14.7 | Default. One build for the iPhone X (14.7) and the iPhone 13 Pro Max (17.4). Needs an Xcode that accepts 14.7. |
-| `HCGSentinelModern` | 15.0 | The only Xcode available rejects 14.7. Does not install on iOS 14. |
+| Shared scheme | `HCGSentinel` (build, run, test, archive) | `HCGSentinelModern` (build, run, archive; no test action) |
+| Minimum iOS | 14.7 (inherited from the project) | 15.0 (set on the target) |
+| Swift sources | the same 27 files | the same 27 files |
+| Resources | `Assets.xcassets` | `Assets.xcassets` |
+| `Info.plist` | `HCGSentinel/Resources/Info.plist` | the same file |
+| Bundle identifier | `com.hcg.sentinel` | `com.hcg.sentinel` (the same app on a device: installing one replaces the other) |
+| Home-screen name | Sentinel | Sentinel |
+| App bundle / executable | `HCGSentinel.app` | `HCGSentinelModern.app` |
+| Entitlements | none | none |
+| Dependencies | local package `SentinelCore` (linked statically) | the same |
+| Debug | `-Onone`, `DEBUG` flag, testability on, active architecture only | the same |
+| Release | `-O`, whole-module, no `DEBUG` flag, product validation on | the same |
+| Signing | Automatic, no team committed | the same |
 
-Both compile exactly the same sources, resources and `Info.plist`, with the same bundle identifier. The source
-uses availability checks (for example `NavigationStack` on iOS 16+, `NavigationView` before), so nothing is
-removed in either variant. The minimum is a real compiler setting, not an edited `MinimumOSVersion`: with 14.7 the
-compiler rejects any unguarded use of a newer API.
+Features are identical because the sources are identical. Newer APIs are used behind availability checks (for
+example `NavigationStack` on iOS 16+, `NavigationView` before), so both targets contain the same screens and
+behaviour on the same iOS version. The minimum is a real compiler setting, not an edited `MinimumOSVersion`.
+
+**Fixed in this version:** both targets used to produce `HCGSentinel.app`. Building both targets in one build
+stopped with `Multiple commands produce …/Release-iphoneos/HCGSentinel.app` (reproduced in CI with
+`xcodebuild -alltargets`). The modern target now produces `HCGSentinelModern.app`, and its bundle identifier and
+display name did not change. CI now checks that every target has its own product, and builds both schemes into one
+derived-data folder.
+
+Builds that go through a scheme (Xcode, `Tools/build.sh`, HCG Executable Maker) build one target and were never
+affected. `xcodebuild -alltargets` remains unusable for this project for a separate reason: without a scheme,
+xcodebuild does not build the local `SentinelCore` package (`Unable to resolve module dependency: 'SentinelCore'`).
+Always build with `-scheme`.
+
+### Which one to build
+
+| Phone | Xcode on the Mac | Scheme |
+| --- | --- | --- |
+| iPhone X on iOS 14.7 | one that accepts a 14.7 deployment target (verified: 16.4, 26.0–26.6) | `HCGSentinel` |
+| iPhone 13 Pro Max on iOS 17.4 (or any iOS 15+ device) | any verified Xcode | `HCGSentinel` or `HCGSentinelModern`; both produce the same app |
+| any device | an Xcode whose supported range starts above 14.7 | `HCGSentinelModern` (does not install on iOS 14) |
+
+The legacy target stays at 14.7 on purpose. It is never raised silently. If an Xcode rejects 14.7, the build fails
+with an explicit message, and the choice of scheme is yours.
+
+### Building for a modern iPhone, step by step
+
+1. On the Mac: `Tools/build.sh range` shows which deployment targets the selected Xcode accepts.
+2. Debug build for the connected phone (signed with your team; install from Xcode):
+
+   ```bash
+   FLAVOR=modern DEVELOPMENT_TEAM=YOURTEAMID DEVICE_ID=<udid> Tools/build.sh device
+   ```
+
+   Or in Xcode: scheme **HCGSentinelModern**, choose the phone, Run.
+3. Release IPA for installing without Xcode:
+
+   ```bash
+   FLAVOR=modern DEVELOPMENT_TEAM=YOURTEAMID Tools/build.sh archive
+   ```
+
+   ```bash
+   FLAVOR=modern DEVELOPMENT_TEAM=YOURTEAMID Tools/build.sh export
+   ```
+
+Leave out `FLAVOR=modern` to build the 14.7 target the same way. Nothing is installed or uploaded automatically.
 
 ## Open and run
 
@@ -145,6 +204,11 @@ deliberately not scripted anywhere in this repository.
 26.6) it runs `Tools/build.sh info`, `range`, `simulator`, `archive` and `inspect` for the default scheme, and for
 `HCGSentinelModern` on 26.6. Complete logs and `.xcresult` bundles are uploaded as artifacts whether the job passes
 or fails. It archives unsigned: CI has no signing identity, so it never produces an installable app or an IPA.
+
+`.github/workflows/build-matrix.yml` builds **both schemes in Debug and Release** with Xcode 26.6, and the modern
+scheme in Debug and Release with Xcode 16.4 (the legacy scheme on 16.4 is covered by the archive check's device build
+and archive), for a generic iOS device and for the Simulator, unsigned, and prints the effective settings and the built app's minimum iOS and
+architectures. A separate job builds both app targets together, which is what used to fail.
 
 macOS runners are billed at a higher rate than Linux on private repositories. Remove or restrict the `app-macos` job
 if that matters to you.

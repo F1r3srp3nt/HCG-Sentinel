@@ -104,7 +104,7 @@ def main():
     test_product = add("product:tests", "PBXFileReference", explicitFileType="wrapper.cfbundle",
                        includeInIndex=0, path=f"{PROJECT}Tests.xctest", sourceTree="BUILT_PRODUCTS_DIR")
     modern_product = add("product:modern", "PBXFileReference", explicitFileType="wrapper.application",
-                         includeInIndex=0, path=f"{PROJECT}.app", sourceTree="BUILT_PRODUCTS_DIR")
+                         includeInIndex=0, path=f"{MODERN}.app", sourceTree="BUILT_PRODUCTS_DIR")
     products_group = add("group:Products", "PBXGroup", children=[app_product, modern_product, test_product],
                          name="Products", sourceTree="<group>")
     main_group = add("group:main", "PBXGroup", children=[app_group, test_group, package_ref, products_group], sourceTree="<group>")
@@ -168,10 +168,12 @@ def main():
     }
     app_configs = configurations("app", dict(app_settings), dict(app_settings))
 
-    # The modern target is the same app (same sources, resources, Info.plist, bundle identifier and product
-    # name). Only its deployment target differs. It exists as a target, not a build configuration, so that
+    # The modern target is the same app (same sources, resources, Info.plist, display name and bundle
+    # identifier); only its deployment target differs. It exists as a target, not a build configuration, so that
     # tools which always pass "-configuration Release" (HCG Executable Maker) can select it by scheme.
-    modern_settings = {**app_settings, "IPHONEOS_DEPLOYMENT_TARGET": MODERN_DEPLOYMENT_TARGET}
+    # Its product (bundle and executable) is named HCGSentinelModern.app: two targets writing the same
+    # HCGSentinel.app made any build of both targets fail with "Multiple commands produce …/HCGSentinel.app".
+    modern_settings = {**app_settings, "IPHONEOS_DEPLOYMENT_TARGET": MODERN_DEPLOYMENT_TARGET, "PRODUCT_NAME": MODERN}
     modern_configs = configurations("modern", dict(modern_settings), dict(modern_settings))
     modern_package_product = add("package-product:modern", "XCSwiftPackageProductDependency", productName=PACKAGE)
     modern_sources = add("phase:modern:sources", "PBXSourcesBuildPhase", buildActionMask=2147483647,
@@ -252,7 +254,7 @@ def scheme(app_target, app_name, test_target):
                 f'               BlueprintName = "{name}"\n               ReferencedContainer = "{container}">\n'
                 f'            </BuildableReference>')
 
-    app = reference(app_target, f"{PROJECT}.app", app_name)
+    app = reference(app_target, f"{app_name}.app", app_name)
     testables = ""
     if test_target is not None:
         tests = reference(test_target, f"{PROJECT}Tests.xctest", f"{PROJECT}Tests")

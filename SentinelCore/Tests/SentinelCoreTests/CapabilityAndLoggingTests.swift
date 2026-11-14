@@ -101,6 +101,21 @@ final class CapabilityTests: XCTestCase {
         XCTAssertEqual(PrivilegeAssessment(hints: [], helperSessionAuthenticated: false, helperReportedCapabilities: false).conclusion, .noEvidence)
     }
 
+    func testFeasibilityItemsCanNeverRunOrVerify() {
+        let registry = CapabilityRegistry()
+        let research = CapabilityCatalog.all.filter { $0.tier == .feasibility }.map { $0.id }
+        XCTAssertEqual(Set(research), [.satelliteAccess, .radioModification, .watchScanning])
+        for id in research {
+            registry.setUserEnabled(id, true)
+            registry.setEnvironment(id, .supported)
+            XCTAssertFalse(registry.recordVerified(id, evidence: "claimed"))
+            XCTAssertEqual(registry.state(id)?.readiness, .notIncluded)
+            XCTAssertTrue(registry.state(id)?.explanation.hasPrefix("Not implemented") == true)
+        }
+        XCTAssertFalse(CapabilityTier.operational.contains(.feasibility))
+        XCTAssertEqual(CapabilityTier.operational.count + 1, CapabilityTier.allCases.count)
+    }
+
     func testCatalogCoversEveryCapabilityOnce() {
         XCTAssertEqual(Set(CapabilityCatalog.all.map { $0.id }), Set(CapabilityID.allCases))
         XCTAssertEqual(CapabilityCatalog.all.count, CapabilityID.allCases.count)

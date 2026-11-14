@@ -9,14 +9,20 @@ final class BluetoothModel: ObservableObject {
     @Published private(set) var autoStopDeadline: Date?
     @Published private(set) var previewMode = false
     @Published private(set) var enabledInSettings = false
+    @Published private(set) var scanNumber = 0
+    @Published private(set) var labels: [UUID: String] = [:]
+    @Published var filter = BluetoothDeviceFilter()
 
     private let controller: BluetoothScanController
+    private let labelStore: BluetoothLabelStore
     private let log: ActivityLog
     private let registry: CapabilityRegistry
     private var publishScheduled = false
 
-    init(central: BluetoothCentral, log: ActivityLog, registry: CapabilityRegistry) {
+    init(central: BluetoothCentral, log: ActivityLog, registry: CapabilityRegistry, labelStore: BluetoothLabelStore = BluetoothLabelStore()) {
         self.controller = BluetoothScanController(central: central)
+        self.labelStore = labelStore
+        self.labels = labelStore.labels
         self.log = log
         self.registry = registry
         controller.onChange = { [weak self] in self?.controllerChanged() }
@@ -58,6 +64,30 @@ final class BluetoothModel: ObservableObject {
         controller.tick()
     }
 
+    /// The list as shown: filtered and sorted.
+    var visiblePeripherals: [DiscoveredPeripheral] {
+        filter.apply(peripherals, labels: labels, currentScan: scanNumber)
+    }
+
+    func nameSource(_ device: DiscoveredPeripheral) -> BluetoothNameSource {
+        device.nameSource(label: labels[device.id])
+    }
+
+    /// Sets or clears the user's own name for a device. Stored on this phone only; never sent anywhere.
+    func setLabel(_ text: String, for id: UUID) {
+        guard labelStore.set(text, for: id) else {
+            log.record(.bluetooth, "Label not saved: at most \(BluetoothLabelStore.maxLabels) device labels are kept", severity: .warning)
+            return
+        }
+        labels = labelStore.labels
+    }
+
+    func removeAllLabels() {
+        labelStore.removeAll()
+        labels = [:]
+        log.record(.bluetooth, "All Bluetooth device labels removed")
+    }
+
     private func controllerChanged() {
         if controller.state != state {
             publish()
@@ -72,6 +102,7 @@ final class BluetoothModel: ObservableObject {
     private func publish() {
         publishScheduled = false
         state = controller.state
+        scanNumber = controller.scanNumber
         peripherals = controller.sortedPeripherals
         autoStopDeadline = controller.autoStopDeadline
     }

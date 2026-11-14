@@ -6,7 +6,7 @@
 | --- | --- |
 | An Xcode project at the root | `HCGSentinel.xcodeproj` (committed; no generation step is needed before building) |
 | Shared schemes | `HCGSentinel` and `HCGSentinelModern` in `HCGSentinel.xcodeproj/xcshareddata/xcschemes` |
-| An application target | `HCGSentinel` (iOS 14.7+) and `HCGSentinelModern` (iOS 15.0+) |
+| An application target | `HCGSentinel` (iOS 14.7+, builds `HCGSentinel.app`) and `HCGSentinelModern` (iOS 15.0+, builds `HCGSentinelModern.app`). Same sources, resources, Info.plist and features; see [BUILDING.md](BUILDING.md#the-two-targets-exactly). |
 | Release configuration with an Archive action | Both schemes archive with `Release` |
 | Bundle identifier | `com.hcg.sentinel` (both targets: it is the same app) |
 | Signing | Automatic, no team committed. Choose the team in Maker. |
@@ -125,21 +125,43 @@ Everything above is for development-signed builds installed on your own register
 distribution has separate, stricter rules (current SDK requirements, an App Store provisioning profile, export
 compliance and review) that this project has not been prepared or checked for.
 
-## Companion changes proposed for HCG Executable Maker
+## Maker handoff
 
-Maker is not the cause of this failure, and no change to it is required for Route A or B. These would have made the
-problem obvious and are specified here rather than applied, because that repository is a separate product:
+### Exactly what to choose
 
-1. **Preflight deployment-range check.** `XcodeProjectAnalyzer` already reads each target's
-   `IPHONEOS_DEPLOYMENT_TARGET`. In readiness, compare it with the selected Xcode's supported range and report,
-   before building: "Target HCGSentinel needs iOS 14.7; the selected Xcode supports X–Y. Select another Xcode in
-   Toolchains or choose a scheme whose target is within range." The range can be read from the selected Xcode's
-   iOS platform metadata (`DEVELOPER_DIR/Platforms/iPhoneOS.platform` SDK settings: minimum and maximum deployment
-   target).
-2. **Show the whole first error.** The build view truncates long lines. Surface the first `error:` line in full
-   (wrapped) in the failure summary instead of only "failed with exit code 65".
-3. **Expose the build configuration for iOS.** `MobileBuildOptions.Variant` is already honoured by `XcodePlanner`
-   (`-configuration`), but the iOS options screen only offers schemes. Listing the project's configurations would
-   let projects offer variants without extra targets.
-4. **Keep the result bundle.** Add `-resultBundlePath <work>/<scheme>.xcresult` to archive and export steps and
-   keep it with the log on failure.
+| Maker field | Value |
+| --- | --- |
+| Project | `HCGSentinel.xcodeproj` (repository root; no workspace, no CocoaPods) |
+| Scheme | **`HCGSentinel`** for one app that runs on iOS 14.7 and later. **`HCGSentinelModern`** only when the selected Xcode rejects 14.7 (then iOS 15.0 and later). |
+| Configuration | **Release** (both schemes archive with Release; Maker passes `-configuration Release`) |
+| Destination | Generic iOS device (`generic/platform=iOS`) for an archive or IPA; iOS Simulator for an unsigned check |
+| Signing | Automatic, your Team ID, "allow provisioning updates" if the Mac has no profile yet |
+| Export | IPA, **development** method, for your registered devices |
+| Expected product | `HCGSentinel.app` or `HCGSentinelModern.app` in the archive, bundle ID `com.hcg.sentinel`, display name "Sentinel", minimum iOS 14.7 or 15.0 |
+
+### What Maker reads correctly (checked against its current `main`, commit 660fcc3)
+
+* `XcodeProjectAnalyzer` takes each target's settings on top of the project's, so it reports 14.7 for
+  `HCGSentinel` (inherited) and 15.0 for `HCGSentinelModern` (set on the target). Correct.
+* Schemes: it reads the Archive action's target and configuration from the shared `.xcscheme` files. Both schemes
+  name exactly one app target and archive with Release. Correct.
+* `MobileReadiness.AddDeploymentRange` now compares those targets with the selected Xcode's
+  `SupportedTargets.iphoneos` range from `SDKSettings.json` and names the other scheme as a route when one is out of
+  range. That is the preflight proposed in the previous version of this document; no further change is needed for it.
+* The planner keeps result bundles and finds the archived app with `Products/Applications/*.app`, so the new
+  `HCGSentinelModern.app` name needs no change in Maker.
+
+### What Maker misreads (minor, reported separately)
+
+`XcodeProjectAnalyzer` sets `UsesSwiftPackages` only when the project contains an `XCLocalSwiftPackageReference` or
+`XCRemoteSwiftPackageReference`. Sentinel links its local package `SentinelCore` the other valid way: a folder
+reference to the package plus `XCSwiftPackageProductDependency` entries on both app targets. Maker therefore labels
+the project "Xcode" instead of "Xcode · Swift packages". This changes only the summary text; `xcodebuild` resolves
+the package either way and the build is unaffected. Suggested change in Maker: also treat any
+`XCSwiftPackageProductDependency` object as package use.
+
+### What was not a Maker problem
+
+The earlier archive failure ("The iOS deployment target 'IPHONEOS_DEPLOYMENT_TARGET' …") came from the selected Xcode
+rejecting 14.7, not from Maker misreading the project. The separate problem fixed in this version (both targets
+writing `HCGSentinel.app`) did not affect Maker, because Maker always builds a single scheme.
