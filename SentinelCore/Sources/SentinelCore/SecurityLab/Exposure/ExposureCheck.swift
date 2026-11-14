@@ -448,9 +448,9 @@ public final class ExposureCheck {
         case .failure(let failure):
             switch failure.kind {
             case .refused:
-                set("https", title("https"), .passed, "Nothing answered plain HTTP on \(target.host):80, so there is no unencrypted version to redirect.")
+                set("https", title("https"), .passed, "Nothing answered plain HTTP on \(target.host):\(url.port ?? 80), so there is no unencrypted version to redirect.")
             case .timeout:
-                set("https", title("https"), .inconclusive, "Plain HTTP on \(target.host):80 timed out; it may be filtered.")
+                set("https", title("https"), .inconclusive, "Plain HTTP on \(target.host):\(url.port ?? 80) timed out; it may be filtered or slow.")
             default:
                 set("https", title("https"), .failedToExecute, "The plain-HTTP request failed: \(failureText(failure)).")
             }
@@ -490,9 +490,9 @@ public final class ExposureCheck {
     private func evaluateHeaders(_ response: HTTPProbeResponse, url: URL, target: ScopedTarget, record: inout SecurityAssessmentRecord,
                                  set: (String, String, CheckOutcome, String) -> Void) {
         let location = Redactor.standard.url(url.absoluteString)
-        let contentType = response.header("content-type") ?? "unknown"
+        let contentType = response.header("content-type") ?? "not stated"
         let isHTML = contentType.lowercased().contains("text/html")
-        let context = isHTML ? "an HTML page" : "a \(contentType) response"
+        let context = isHTML ? "an HTML page" : (response.header("content-type") == nil ? "a response without a Content-Type" : "a \(contentType) response")
         let statusNote = (200...299).contains(response.status) ? "" : " (HTTP \(response.status))"
 
         // HSTS only means something over HTTPS.
@@ -526,6 +526,11 @@ public final class ExposureCheck {
             set("hsts", title("hsts"), .unsupported, "The final response was plain HTTP, where Strict-Transport-Security has no effect.")
         }
 
+        if (300...399).contains(response.status) {
+            set("headers", title("headers"), .inconclusive,
+                "The final response was an HTTP \(response.status) redirect that was not followed, so the destination page's headers were not examined.")
+            return
+        }
         var missing: [String] = []
         for rule in ExposureCheck.headerRules where !rule.present(response) {
             missing.append(rule.name)
