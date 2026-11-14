@@ -231,11 +231,14 @@ final class AppModel: ObservableObject {
 
     var verifiedCapabilityCount: Int { capabilities.filter { $0.readiness == .verified }.count }
 
+    /// Capabilities that can run or have a defined interface (feasibility research is not counted).
+    var operationalCapabilityCount: Int { capabilities.filter { $0.descriptor.tier != .feasibility }.count }
+
     /// Status for HCG surfaces such as Nexus: counts, labels and report references only. Nexus has no Sentinel
     /// integration yet and Sentinel has no App Group, so this is built on request and not written anywhere.
     func statusSnapshot(now: Date = Date()) -> NexusStatusSnapshot {
         NexusStatusSnapshot(generatedAt: now, activeOperations: activeOperations, verifiedCapabilities: verifiedCapabilityCount,
-                            totalCapabilities: capabilities.count, previewMode: settings.previewMode,
+                            totalCapabilities: operationalCapabilityCount, previewMode: settings.previewMode,
                             recentAssessments: securityLab.references)
     }
 }

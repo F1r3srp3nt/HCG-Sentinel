@@ -100,7 +100,28 @@ public enum CapabilityCatalog {
             tier: .externalNode,
             implementation: .interfaceOnly("The contract is defined in docs/SECURITY_LAB_SERVER.md, but HCG Server has no assessment API yet and cannot pair with an iPhone, so every assessment runs on this device."),
             verificationMethod: "Requires an HCG Server that implements the Security Lab contract and reports the module as supported.",
-            limits: "Pairing a server never enables anything by itself; each module needs the server's own capability report and an explicit scope.")
+            limits: "Pairing a server never enables anything by itself; each module needs the server's own capability report and an explicit scope."),
+        CapabilityDescriptor(
+            id: .satelliteAccess, title: "Satellite access",
+            summary: "Feasibility question only: whether Sentinel could show anything about the iPhone's satellite features.",
+            tier: .feasibility,
+            implementation: .notIncluded("Not implemented. iOS offers apps no public interface to the satellite radio or its state, so there is nothing Sentinel can read or verify today."),
+            verificationMethod: "Needs a documented, public Apple API or an external receiver with its own verified interface.",
+            limits: "Sentinel shows no satellite status, positions or link data, and does not claim to."),
+        CapabilityDescriptor(
+            id: .radioModification, title: "Radio or baseband modification",
+            summary: "Feasibility question only: changing how the phone's radios behave.",
+            tier: .feasibility,
+            implementation: .notIncluded("Not implemented and not planned for the app. iOS gives apps no control over the cellular, Wi-Fi or Bluetooth radios, and a jailbreak helper does not add a supported, safe way to change radio behaviour."),
+            verificationMethod: "Would need concrete, legal, documented support on specific hardware before any design work.",
+            limits: "Sentinel never transmits, jams, injects or changes radio settings."),
+        CapabilityDescriptor(
+            id: .watchScanning, title: "Apple Watch scanning",
+            summary: "Feasibility question only: running scans on, or from, an Apple Watch.",
+            tier: .feasibility,
+            implementation: .notIncluded("Not implemented. Sentinel has no watchOS app, and watchOS limits Bluetooth and networking for apps; whether any useful, honest scan is possible has not been established."),
+            verificationMethod: "Needs a watchOS prototype on real hardware that shows which APIs actually deliver data.",
+            limits: "No scan data comes from an Apple Watch today.")
     ]
 
     public static func initialEnvironment(for id: CapabilityID) -> EnvironmentSupport {
@@ -110,6 +131,8 @@ public enum CapabilityCatalog {
             return .supported
         case .serverAssessments:
             return .unknown("No HCG Server with a Security Lab interface is paired.")
+        case .satelliteAccess, .radioModification, .watchScanning:
+            return .unsupported("Feasibility research only. Nothing is implemented, so nothing can run or be verified.")
         case .nearbyWifiDiscovery:
             return .unknown("Needs an authenticated node that offers Wi-Fi scanning. iOS itself provides no scanning API to ordinary apps.")
         case .bluetoothDiscovery:

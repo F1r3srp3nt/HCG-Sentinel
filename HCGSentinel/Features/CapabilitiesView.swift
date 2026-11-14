@@ -17,7 +17,7 @@ struct CapabilitiesView: View {
             BackendCard(title: "External node", tone: nodeTone, status: nodeStatus,
                         detail: "A Mac or analysis node you operate, reached over the authenticated node protocol. Nearby Wi-Fi discovery and spectrum appear only when an authenticated node offers them, and count as verified only when a non-simulated node returns valid results.")
             ForEach(CapabilityTier.allCases, id: \.self) { tier in
-                SectionLabel(text: tier.title, tone: tier == .onDevice ? .ready : tier == .externalNode ? .info : .accent)
+                SectionLabel(text: tier.title, tone: tier == .onDevice ? .ready : tier == .externalNode ? .info : tier == .feasibility ? .off : .accent)
                 Explanation(tierNote(tier))
                 ForEach(app.capabilities.filter { $0.descriptor.tier == tier }) { state in
                     CapabilityCard(state: state)
@@ -29,7 +29,9 @@ struct CapabilitiesView: View {
 
     private var helperStatus: String {
         switch helper.probeResult {
-        case .notProbed: return "Not probed"
+        case .notProbed:
+            if !helper.hasPairingKey { return "Not set up: no pairing key" }
+            return helper.remoteConnectionsEnabled ? "Not probed yet" : "Not probed (Remote connections is off)"
         case .noAnswer: return "No helper answered"
         case .verified(let report, let date):
             let operations = report.recognizedOperations.map { $0.rawValue }.sorted().joined(separator: ", ")
@@ -66,6 +68,8 @@ struct CapabilitiesView: View {
             return "The real work happens on a Mac or radio node you operate. Sentinel only connects to it."
         case .privilegedHelper:
             return "Needs a separately installed helper on a compatible device. Sentinel includes none, and installing a package does not grant these permissions by itself."
+        case .feasibility:
+            return "Ideas under investigation, listed so their status is clear. None is implemented, none can be turned on, and Sentinel shows no data for them."
         }
     }
 }

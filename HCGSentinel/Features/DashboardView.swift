@@ -130,12 +130,12 @@ struct DashboardView: View {
                     Text("\(app.verifiedCapabilityCount)")
                         .font(.system(.largeTitle, design: .rounded).weight(.semibold))
                         .foregroundColor(app.verifiedCapabilityCount > 0 ? Theme.ok : Theme.textPrimary)
-                    Text("of \(app.capabilities.count) confirmed by a real operation this session")
+                    Text("of \(app.operationalCapabilityCount) confirmed by a real operation this session")
                         .font(.footnote)
                         .foregroundColor(Theme.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                ForEach(CapabilityTier.allCases, id: \.self) { tier in
+                ForEach(CapabilityTier.operational, id: \.self) { tier in
                     tierRow(tier)
                 }
             }
