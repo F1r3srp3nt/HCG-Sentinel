@@ -139,15 +139,52 @@ compliance and review) that this project has not been prepared or checked for.
 | Export | IPA, **development** method, for your registered devices |
 | Expected product | `HCGSentinel.app` or `HCGSentinelModern.app` in the archive, bundle ID `com.hcg.sentinel`, display name "Sentinel", minimum iOS 14.7 or 15.0 |
 
-### What Maker reads correctly (checked against its current `main`, commit 660fcc3)
+### Maker 0.3.1 or later is required with an Xcode that starts at iOS 15.0
+
+Maker up to 0.3.0 named `HCGSentinelModern` as the route but could not use it: it judged every output with the
+project's first scheme (`HCGSentinel`, 14.7), so with an Xcode whose range starts at 15.0 all outputs were unavailable,
+the scheme picker never appeared, and its build engine would have refused the modern scheme for the legacy scheme's
+reason. The status read "Required toolchain missing". Nothing in this repository caused that and nothing here was
+changed for it; the fix is in Maker (scheme chosen before outputs, saved per project, used by every check and by
+`xcodebuild -scheme`). Details: Maker's `docs/HCG-PROJECTS.md`, “HCG Sentinel — scheme selection on an iOS 15 Xcode”.
+
+Check on the Mac (sidebar footer, Settings › About, or in Terminal):
+
+```bash
+"/Applications/HCG Executable Maker.app/Contents/MacOS/HCGExecutableMaker" --version
+```
+
+It must say 0.3.1 or later. Then, in Mobile Build Studio: choose scheme **HCGSentinelModern** in section 2 (or press
+“Use scheme HCGSentinelModern”), confirm trust in section 5, build.
+
+### Is Maker building this revision?
+
+Maker builds a **copy** of the folder or ZIP taken at import, not the folder itself. Mobile Build Studio shows under
+“Imported copy” whether that copy still matches the original (and the original's Git commit); **Refresh source**
+copies it again without losing the project or the scheme choice. **Copy diagnostic report** (or
+`HCGExecutableMaker --diagnose-mobile`) lists SHA-256 hashes of the files that decide schemes and deployment targets.
+For `main` at 03bc6e5 they are:
+
+| File | SHA-256 at 03bc6e5 (`main`) | at 810c6f9 (older) |
+| --- | --- | --- |
+| `HCGSentinel.xcodeproj/project.pbxproj` | `8a5c6cfbcd930074f61284538a64fd191bb31f2d3d665b05c5c66f73afe9e0b0` | `38d95aa724b0fad6f99806ff5ccf70d260af0f03433162a9b94ce0b0850b2545` |
+| `…/xcschemes/HCGSentinel.xcscheme` | `3cdf71c801f54e86d68b905672bcddf8d70cbf1ab597f00cc66b1ca08ad254a1` | same |
+| `…/xcschemes/HCGSentinelModern.xcscheme` | `1e95a1302043a8b80d5a092accd4f5286829a10809fe55aeeee385a8fe1f7b5a` | `bc3e14ca0cfdcf0f2609f053a33dcc7f9e604f2e1fabf070b26a4888d8f5af89` |
+
+A ZIP downloaded from GitHub produces the same files, so the same hashes apply. Any other value means the copy is from
+another revision: refresh it from an up-to-date folder or ZIP.
+
+### What Maker reads correctly (checked against its `main`, commit 660fcc3; the scheme handling was corrected in 0.3.1)
 
 * `XcodeProjectAnalyzer` takes each target's settings on top of the project's, so it reports 14.7 for
   `HCGSentinel` (inherited) and 15.0 for `HCGSentinelModern` (set on the target). Correct.
 * Schemes: it reads the Archive action's target and configuration from the shared `.xcscheme` files. Both schemes
   name exactly one app target and archive with Release. Correct.
-* `MobileReadiness.AddDeploymentRange` now compares those targets with the selected Xcode's
+* `MobileReadiness.AddDeploymentRange` compares those targets with the selected Xcode's
   `SupportedTargets.iphoneos` range from `SDKSettings.json` and names the other scheme as a route when one is out of
-  range. That is the preflight proposed in the previous version of this document; no further change is needed for it.
+  range. **Correction:** an earlier version of this document said no further change was needed. That was wrong: up to
+  Maker 0.3.0 the check was only scheme-aware when called directly; the output list and the build engine called it
+  without the scheme, so the named route could not be taken. Fixed in Maker 0.3.1 (see above).
 * The planner keeps result bundles and finds the archived app with `Products/Applications/*.app`, so the new
   `HCGSentinelModern.app` name needs no change in Maker.
 
