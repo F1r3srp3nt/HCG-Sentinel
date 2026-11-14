@@ -42,7 +42,7 @@ offers `wifi_scan`; stock iOS has no API for it.
 | Setting | Enables | Turning it off |
 | --- | --- | --- |
 | Scanning | Starting Bluetooth LE scans; requesting Wi-Fi scans from a node | Stops a Bluetooth scan at once; cancels a pending Wi-Fi scan request |
-| Remote connections | Connecting to the node; probing the helper; sending test requests | Closes node and helper sessions; cancels a request in flight |
+| Remote connections | Connecting to the node; probing the helper; sending test requests; running Exposure Check | Closes node and helper sessions; cancels a request in flight and a running Exposure Check |
 | Animation | Status pulses and the moving light line | Makes them static (Reduce Motion also turns them off) |
 
 All default to off except Animation. Turning a switch on starts nothing by itself. Check My Network is separate: it
@@ -105,6 +105,17 @@ app displays only what it actually observed; an empty list stays empty.
 helper session, capture import). **Stop All Operations** calls each active handle's `stop`. It has no reference to the
 capture store or settings, so it cannot delete data, and it uses no API that affects system Bluetooth, Wi-Fi or other
 apps.
+
+## Security Lab
+
+`SentinelCore/SecurityLab` holds the shared assessment model (`SecurityAssessmentRecord`, five check outcomes,
+severity and confidence kept separate, limits, execution location, report store and redacted renderer), the scope
+policy (`TargetScope`, `AddressClassifier`) and the three modules. Each module is a blocking engine driven by an
+`AssessmentControl` (cancellation, overall deadline). `SecurityLabModel` in the app runs one engine at a time on a
+background queue and publishes progress measured in real work. Exposure Check needs the **Remote connections**
+switch, and turning it off cancels a running check. The Authentication Defense Lab service listens on loopback only
+and is registered with Stop All Operations. See [SECURITY_LAB.md](SECURITY_LAB.md) and, for the planned HCG Server
+execution backend, [SECURITY_LAB_SERVER.md](SECURITY_LAB_SERVER.md).
 
 ## Process boundaries
 

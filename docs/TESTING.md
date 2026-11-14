@@ -4,8 +4,9 @@
 
 | Suite | Runs on | Covers |
 | --- | --- | --- |
-| `SentinelCoreTests` | macOS and Linux via `swift test`; iOS simulator via the scheme | Capture parsing and malformed input, packet decoding, capture store and retention, capability rules, redaction, activity log, request validation/preview/state, Bluetooth scan state machine including permission failures, node protocol and session, helper crypto/handshake/validation, Stop All, settings, deep links. |
-| `HCGSentinelTests` | iOS simulator (hosted in the app) | Wiring between settings, tools and the capability registry; Preview mode isolation; router behaviour. |
+| `SentinelCoreTests` | macOS and Linux via `swift test`; iOS simulator via the scheme | Capture parsing and malformed input, packet decoding, capture store and retention, capability rules, redaction, activity log, request validation/preview/state, Bluetooth scan state machine including permission failures, node protocol and session, helper crypto/handshake/validation, Stop All, settings, deep links. Security Lab: assessment model and redacted export, report store, scope policy and address classification, DEFLATE/zip/tar decoding with bombs and zip-slip, Secret Scanner detection/false positives/redaction/suppression/symlinks/limits/cancellation, Exposure Check with a mock transport and against the local exposure service (TLS refusal, out-of-scope redirects, timeouts, cancellation, body cap), Authentication Defense Lab service and assessment over real loopback HTTP (lockout, throttling, error messages, logging, attempt cap, cancellation, time limit). |
+| `HCGSentinelTests` | iOS simulator (hosted in the app) | Wiring between settings, tools and the capability registry; Preview mode isolation; router behaviour; Security Lab switches, report links, Stop All of the lab service, a full lab assessment through the app model, snapshot references. |
+| `Tools/test_hcg_server_assessment_harness.py` | Any Python 3 | The proposed HCG Server Security Lab contract: device authorisation, cross-device report denial, execution-side scope validation, redirects, cancellation. |
 
 All test inputs are synthetic and built in code (`SyntheticCapture`, RFC 5737/3849 documentation addresses). No real
 capture, token or endpoint is stored in the repository.
@@ -20,6 +21,25 @@ python3 Tools/local_test_service.py --port 8080
 
 ```bash
 SENTINEL_TEST_SERVICE_URL=http://127.0.0.1:8080 swift test --package-path SentinelCore
+```
+
+### Security Lab services
+
+The live Exposure Check tests run only when the exposure service URLs are set:
+
+```bash
+python3 Tools/exposure_test_service.py --http-port 8081 --https-port 8444
+```
+
+```bash
+SENTINEL_EXPOSURE_HTTP=http://127.0.0.1:8081 SENTINEL_EXPOSURE_HTTPS=https://127.0.0.1:8444 swift test --package-path SentinelCore
+```
+
+The Authentication Defense Lab tests start the bundled lab themselves on a random loopback port. The HCG Server
+contract harness tests need nothing else:
+
+```bash
+python3 -m unittest -v Tools/test_hcg_server_assessment_harness.py
 ```
 
 ### Robustness sweeps
@@ -141,6 +161,14 @@ This is the configuration that has never been executed anywhere, so start here.
 7. iOS 14.7 specifically: tab bar and navigation bars are opaque obsidian, the request body editor has a dark
    background, sheets (Settings, Capabilities, Review request) open and close, pushing into a packet works.
 8. Background the app during a scan and a stream, return: states are accurate (iOS may have stopped the scan).
+9. Security Lab › Secret Scanner: pick a folder from Files (On My iPhone and iCloud Drive) and a .zip containing a
+   synthetic `.env` with `DB_PASSWORD=<random>`. The finding shows file and line, the value is redacted, Export shows
+   no secret, "Mark as false positive" hides it on the next scan.
+10. Security Lab › Exposure Check (Remote connections on): an HTTPS site you own; a self-signed service on your LAN
+    marked local (certificate finding, nothing bypassed); turn Remote connections off mid-run (it stops).
+11. Security Lab › Authentication Defense Lab: start the lab, run with defaults (lockout passes), then turn lockout and
+    rate limiting off (verified findings); background the app during a run and return (the run stops or completes,
+    never silently continues against anything other than the loopback lab).
 
 ### iPad
 
