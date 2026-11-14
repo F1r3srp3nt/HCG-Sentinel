@@ -55,6 +55,8 @@ jobs:
         run: Tools/build.sh range
       - name: Simulator build (unsigned)
         run: Tools/build.sh simulator
+      - name: Debug build for a generic iOS device (unsigned)
+        run: Tools/build.sh device
       - name: Archive for a generic iOS device (unsigned)
         run: Tools/build.sh archive
       - name: Inspect the archived app

@@ -5,6 +5,7 @@
 #   Tools/build.sh range       Ask the selected Xcode which iOS deployment targets it supports.
 #   Tools/build.sh test-core   Run the SentinelCore tests on this Mac (no simulator).
 #   Tools/build.sh simulator   Build the app for the iOS Simulator (unsigned).
+#   Tools/build.sh device      Debug build for an iPhone or iPad (signed when DEVELOPMENT_TEAM is set).
 #   Tools/build.sh archive     Archive for a generic iOS device.
 #   Tools/build.sh inspect     Inspect the app inside the last archive.
 #   Tools/build.sh export      Export an IPA from the last archive (needs a signed archive).
@@ -18,6 +19,8 @@
 #                      "modern": scheme HCGSentinelModern, iOS 15.0 and later. Will not install on iOS 14.
 #   IOS_DEPLOYMENT_TARGET  Optional explicit minimum iOS for this build only (e.g. 16.0). Use it only when the
 #                      selected Xcode rejects the flavor's target; the result is reported by 'inspect'.
+#   DEVICE_ID          Optional: build for this connected device (UDID from 'xcrun xctrace list devices')
+#                      instead of a generic iOS device. Installing and launching stay manual (Xcode or Devices).
 #   BUILD_DIR          Output directory (default: <repo>/build).
 #
 # Nothing here uploads anything, and a failed step always exits non-zero.
@@ -129,6 +132,22 @@ cmd_simulator() {
     CODE_SIGNING_ALLOWED=NO ${extra[@]+"${extra[@]}"}
 }
 
+cmd_device() {
+  local extra=() destination='generic/platform=iOS'
+  while IFS= read -r line; do extra+=("$line"); done < <(signing_args)
+  if [ -n "${DEVICE_ID:-}" ]; then destination="id=$DEVICE_ID"; fi
+  run_xcodebuild device build -project "$PROJECT" -scheme "$SCHEME" -configuration "$DEBUG_CONFIG" \
+    -derivedDataPath "$BUILD_DIR/DerivedData" -destination "$destination" "${extra[@]}"
+  local app="$BUILD_DIR/DerivedData/Build/Products/$DEBUG_CONFIG-iphoneos/HCGSentinel.app"
+  echo "App: $app"
+  echo "Minimum iOS: $(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist")"
+  if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
+    echo "Signed for team $DEVELOPMENT_TEAM. Install it from Xcode (Run) or Window › Devices and Simulators; nothing is installed automatically."
+  else
+    echo "UNSIGNED: proves the device build compiles; it cannot be installed."
+  fi
+}
+
 cmd_archive() {
   local extra=()
   while IFS= read -r line; do extra+=("$line"); done < <(signing_args)
@@ -184,8 +203,9 @@ case "${1:-}" in
   range) cmd_range ;;
   test-core) cmd_test_core ;;
   simulator) cmd_simulator ;;
+  device) cmd_device ;;
   archive) cmd_archive ;;
   inspect) cmd_inspect ;;
   export) cmd_export ;;
-  *) sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
