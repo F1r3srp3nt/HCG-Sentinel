@@ -200,8 +200,9 @@ deliberately not scripted anywhere in this repository.
 `HCGSentinelModern` on 26.6. Complete logs and `.xcresult` bundles are uploaded as artifacts whether the job passes
 or fails. It archives unsigned: CI has no signing identity, so it never produces an installable app or an IPA.
 
-`.github/workflows/build-matrix.yml` builds **both schemes in Debug and Release**, for a generic iOS device and for the
-Simulator, unsigned, with Xcode 16.4 and 26.6, and prints the effective settings and the built app's minimum iOS and
+`.github/workflows/build-matrix.yml` builds **both schemes in Debug and Release** with Xcode 26.6, and the modern
+scheme in Debug and Release with Xcode 16.4 (the legacy scheme on 16.4 is covered by the archive check's device build
+and archive), for a generic iOS device and for the Simulator, unsigned, and prints the effective settings and the built app's minimum iOS and
 architectures. A separate job builds both app targets together, which is what used to fail.
 
 macOS runners are billed at a higher rate than Linux on private repositories. Remove or restrict the `app-macos` job

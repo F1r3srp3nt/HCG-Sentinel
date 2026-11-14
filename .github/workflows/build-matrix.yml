@@ -22,13 +22,16 @@ jobs:
     name: ${{ matrix.scheme }} · ${{ matrix.configuration }} · Xcode ${{ matrix.xcode }}
     strategy:
       fail-fast: false
+      # Every scheme × configuration on Xcode 26.6, plus the modern scheme on 16.4. The legacy scheme on 16.4
+      # (Debug device build and Release archive) is covered by archive.yml, which keeps the macOS queue shorter.
       matrix:
-        xcode: ["16.4", "26.6"]
-        scheme: [HCGSentinel, HCGSentinelModern]
-        configuration: [Debug, Release]
         include:
-          - { xcode: "16.4", runner: macos-15 }
-          - { xcode: "26.6", runner: macos-26 }
+          - { xcode: "26.6", runner: macos-26, scheme: HCGSentinel, configuration: Debug }
+          - { xcode: "26.6", runner: macos-26, scheme: HCGSentinel, configuration: Release }
+          - { xcode: "26.6", runner: macos-26, scheme: HCGSentinelModern, configuration: Debug }
+          - { xcode: "26.6", runner: macos-26, scheme: HCGSentinelModern, configuration: Release }
+          - { xcode: "16.4", runner: macos-15, scheme: HCGSentinelModern, configuration: Debug }
+          - { xcode: "16.4", runner: macos-15, scheme: HCGSentinelModern, configuration: Release }
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
