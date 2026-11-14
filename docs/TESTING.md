@@ -144,8 +144,14 @@ This is the configuration that has never been executed anywhere, so start here.
 
 1. First launch: **no permission prompt appears**.
 2. Bluetooth Explorer › enable scanning in Settings › Start scanning: iOS asks for Bluetooth permission once.
-   * Allow: nearby advertisers appear with identifier, name/services where advertised, RSSI and last-seen time;
-     Capabilities shows Bluetooth LE discovery verified.
+   * Allow: nearby advertisers appear; Capabilities shows Bluetooth LE discovery verified.
+   * Names: a device you know (headphones, a watch, a Mac) shows its advertised name; others show
+     "Name not broadcast" in italics. Open one: the Name card says where the name comes from.
+   * Keep the same device in range for a minute: its row stays one entry, the name does not disappear when later
+     advertisements omit it, and "Last heard" keeps updating. Signal strength shows dBm and the last readings' range.
+   * Label a device ("Desk speaker"), relaunch Sentinel, scan again: the label is still there.
+   * Filters: "Only devices that broadcast a name", "−70 dBm or stronger" and search by a service name narrow the list.
+   * Stop, then Scan again: the pill reads "Scan 2 live", devices heard again show "This scan", the rest "Earlier scan".
    * The scan stops at the configured time limit and when you tap Stop.
    * Turn Bluetooth off in iOS Settings during a scan: the scan stops with "Bluetooth is turned off"; turning it
      back on does not restart the scan.
