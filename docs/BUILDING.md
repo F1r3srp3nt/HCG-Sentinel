@@ -41,8 +41,9 @@ minimum iOS.
 
 | | `HCGSentinel` | `HCGSentinelModern` |
 | --- | --- | --- |
-| Shared scheme | `HCGSentinel` (build, run, test, archive) | `HCGSentinelModern` (build, run, archive; no test action) |
-| Minimum iOS | 14.7 (inherited from the project) | 15.0 (set on the target) |
+| Shared scheme | `HCGSentinel` (build, run, test, archive) | `HCGSentinelModern` (build, run, test, archive) |
+| Minimum iOS | 14.7 (set explicitly on the target) | 15.0 (set on the target; also the project default) |
+| Test target | `HCGSentinelTests` (14.7, hosted by `HCGSentinel.app`) | `HCGSentinelModernTests` (15.0, hosted by `HCGSentinelModern.app`, same test files) |
 | Swift sources | the same 27 files | the same 27 files |
 | Resources | `Assets.xcassets` | `Assets.xcassets` |
 | `Info.plist` | `HCGSentinel/Resources/Info.plist` | the same file |
@@ -69,6 +70,17 @@ Builds that go through a scheme (Xcode, `Tools/build.sh`, HCG Executable Maker) 
 affected. `xcodebuild -alltargets` remains unusable for this project for a separate reason: without a scheme,
 xcodebuild does not build the local `SentinelCore` package (`Unable to resolve module dependency: 'SentinelCore'`).
 Always build with `-scheme`.
+
+### "The iOS Simulator deployment target … is set to 14.7, but the range … is 15.0 to 27.2.x"
+
+That message means the selected Xcode no longer supports iOS 14.7. It comes from the `HCGSentinel` scheme, which
+Xcode picks first, or from its test target. In this version:
+
+* **Select the scheme `HCGSentinelModern`** (Product › Scheme, or the scheme menu next to the Run button). It builds,
+  runs and tests with iOS 15.0 and has no dependency on the 14.7 target: its tests are hosted by
+  `HCGSentinelModern.app`, and nothing in its build inherits 14.7 any more, because 14.7 is now set only on the legacy
+  app and its tests, and the project-wide default is 15.0.
+* Keep `HCGSentinel` for the iPhone X on iOS 14.7, built with an Xcode that still accepts 14.7 (16.4, 26.x).
 
 ### Which one to build
 

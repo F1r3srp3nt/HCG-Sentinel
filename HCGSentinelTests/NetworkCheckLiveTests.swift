@@ -1,6 +1,10 @@
 import SentinelCore
 import XCTest
+#if SENTINEL_MODERN_TESTS
+@testable import HCGSentinelModern
+#else
 @testable import HCGSentinel
+#endif
 
 /// Runs Check My Network with the app's real probe (path monitor, Wi-Fi identity API, system proxy settings,
 /// getaddrinfo, URLSession) against the live network. Needs internet access, so it only runs when
