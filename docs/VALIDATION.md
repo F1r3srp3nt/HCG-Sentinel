@@ -96,6 +96,15 @@ section through its deep link, and uploads 14 screenshots as the `simulator-scre
 * No interaction was scripted: no scan was started, no file imported, no request sent, no node connected, in the
   running app. Those paths are covered by unit tests of the underlying logic only.
 
+## Simulator integration runs (CI, Xcode 26.6, iOS 26 simulator)
+
+Run 43526578068 on commit e5e2af0; every job passed, including the archive check on Xcode 16.4 and 26.6.
+
+- **Mock radio node** (`MockNodeIntegrationTests`, real `WebSocketNodeTransport` against `Tools/mock_radio_node.py` with a random 32-byte key): authenticated v2 handshake, spectrum frames, Wi-Fi scan (3 simulated networks, none treated as verified), wrong key rejected before anything is kept, unreachable node fails clearly. 3 passed, 1 skipped (Keychain, see below).
+- **Check My Network live** (`NetworkCheckLiveTests`, the app's real `PlatformNetworkProbe`): all 8 steps finished in 0.57 s. Findings: wired connection (notice: not Wi-Fi); Wi-Fi identity unavailable with the entitlement reason; no proxy; DNS resolves; a random non-existent name gets "not found"; captive.apple.com page unmodified; HTTPS to example.com and www.apple.com trusted with certificate chains recorded. Headline: "No security concerns found by these checks" — never "safe".
+- **Cancel during the live check**: cancelled as the first DNS step started; report marked cancelled after 3 of 8 steps, the remaining five "not checked", and no late changes 3 s later.
+- **Screenshots** of an automatic run in the app (`-SentinelRunNetworkCheck`) are in the run's `simulator-screenshots-*` artifacts.
+
 ## Not validated
 
 | Area | Why | How to close it |
@@ -105,7 +114,8 @@ section through its deep link, and uploads 14 screenshots as the `simulator-scre
 | Bluetooth discovery against a real radio | Simulators have no Bluetooth. The scan state machine and permission failures are tested with a mock central; the Core Bluetooth adapter itself has never run. | Device checklist, Bluetooth section. |
 | Document picker import | Not scripted. Parsing is heavily tested; the picker hand-off is not. | Simulator checklist step 8. |
 | Request Composer end to end in the app | Core transport tested against the local service on macOS/Linux, not from the running iOS app. Local Network permission and App Transport Security behaviour are untested. | Simulator step 6, device step 4. |
-| Radio Lab WebSocket transport | The session logic is tested with a mock transport. `URLSessionWebSocketTask` against the mock node has not been run. | Simulator step 7. |
+| Radio Lab screen model with a stored pairing key | The app's WebSocket transport is now tested against `Tools/mock_radio_node.py` in the simulator (see below), but `testRadioLabModelConnectsAndRecordsCapabilities` skips in CI because the simulator Keychain refuses items for the unsigned test build. | Simulator step 7, or run the test from a signed build. |
+| Check My Network on Wi-Fi, cellular, a captive portal or a proxy | CI ran it only on a wired, unproxied runner. | Device checklist on each network type. |
 | Real radio hardware | No node implementation and no hardware exist. | Build a node to `docs/NODE_PROTOCOL.md`. |
 | Privileged helper | No helper exists; the jailbreak environment is unknown. Only the protocol, client and reference server logic are tested, in memory. The loopback transport and Keychain storage have not been run. | See `docs/HELPER_INTERFACE.md`. |
 | Mac debugging proxy, Nexus | Interface and documentation only. | See the respective documents. |
