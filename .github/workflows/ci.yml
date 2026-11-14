@@ -21,14 +21,23 @@ jobs:
       - uses: actions/checkout@v4
       - name: Toolchain
         run: swift --version
-      - name: Start local test service
+      - name: Start local test services
         run: |
           python3 Tools/local_test_service.py --port 8080 &
-          sleep 1
+          python3 Tools/exposure_test_service.py --http-port 8081 --https-port 8444 &
+          sleep 2
+          curl -sf http://127.0.0.1:8081/plain > /dev/null
       - name: swift test
         env:
           SENTINEL_TEST_SERVICE_URL: http://127.0.0.1:8080
-        run: swift test --package-path SentinelCore
+          SENTINEL_EXPOSURE_HTTP: http://127.0.0.1:8081
+          SENTINEL_EXPOSURE_HTTPS: https://127.0.0.1:8444
+        run: swift test --package-path SentinelCore 2>&1 | tee core-test.log; test ${PIPESTATUS[0]} -eq 0
+      - name: HCG Server contract harness tests
+        run: python3 -m unittest -v Tools/test_hcg_server_assessment_harness.py
+      - name: Live assessment output
+        if: always()
+        run: grep -E "EXPOSURE-CHECK|AUTH-LAB|skipped" core-test.log || true
 
   app-macos:
     name: App build and tests (Xcode)
@@ -48,14 +57,21 @@ jobs:
         run: |
           python3 Tools/generate_xcodeproj.py
           git diff --exit-code -- HCGSentinel.xcodeproj
-      - name: Start local test service
+      - name: Start local test services
         run: |
           python3 Tools/local_test_service.py --port 8080 &
-          sleep 1
+          python3 Tools/exposure_test_service.py --http-port 8081 --https-port 8444 &
+          sleep 2
+          curl -sf http://127.0.0.1:8081/plain > /dev/null
       - name: SentinelCore tests (macOS, includes CryptoKit cross-check)
         env:
           SENTINEL_TEST_SERVICE_URL: http://127.0.0.1:8080
-        run: swift test --package-path SentinelCore
+          SENTINEL_EXPOSURE_HTTP: http://127.0.0.1:8081
+          SENTINEL_EXPOSURE_HTTPS: https://127.0.0.1:8444
+        run: swift test --package-path SentinelCore 2>&1 | tee core-test.log; test ${PIPESTATUS[0]} -eq 0
+      - name: Live assessment output (macOS)
+        if: always()
+        run: grep -E "EXPOSURE-CHECK|AUTH-LAB|skipped" core-test.log || true
       - name: Build for a generic iOS device (unsigned, arm64)
         run: |
           xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel \
@@ -132,7 +148,7 @@ jobs:
           for size in ${{ matrix.sizes }}; do
             xcrun simctl ui "$SIMULATOR_UDID" content_size "$size"
             for pass in top end; do
-              for section in dashboard networkcheck network bluetooth radio requests settings capabilities; do
+              for section in dashboard networkcheck securitylab network bluetooth radio requests settings capabilities; do
                 xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
                 sleep 1
                 if [ "$pass" = end ]; then
@@ -150,6 +166,12 @@ jobs:
             xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection networkcheck -SentinelRunNetworkCheck YES
             sleep 60
             xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-run-networkcheck.png"
+            # Security Lab after a real Authentication Defense Lab run against the bundled loopback service.
+            xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+            sleep 1
+            xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection securitylab -SentinelRunAuthLab YES
+            sleep 20
+            xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$size-run-authlab.png"
           done
           xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
           for file in screenshots/*.png; do sips -Z 1400 "$file" >/dev/null; done

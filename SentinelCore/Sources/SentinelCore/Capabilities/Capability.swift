@@ -31,6 +31,10 @@ public enum CapabilityID: String, CaseIterable, Codable {
     case helperLink
     case deviceWideCapture
     case trafficFiltering
+    case secretScanning
+    case exposureCheck
+    case authDefenseLab
+    case serverAssessments
 }
 
 /// Whether Sentinel ships working code for the capability.

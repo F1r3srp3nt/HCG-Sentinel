@@ -11,6 +11,8 @@ Nothing Nexus-specific is implemented. Two small building blocks exist for it:
 ```
 hcgsentinel://open/dashboard
 hcgsentinel://open/network
+hcgsentinel://open/networkCheck
+hcgsentinel://open/securityLab
 hcgsentinel://open/bluetooth
 hcgsentinel://open/radio
 hcgsentinel://open/requests
@@ -18,7 +20,16 @@ hcgsentinel://open/capabilities
 hcgsentinel://open/settings
 ```
 
-`DeepLink.section(from:)` accepts exactly these. Links with a query, fragment, extra path component or any other
+Security Lab reports have their own review link:
+
+```
+hcgsentinel://report/<report-uuid>
+```
+
+It opens Security Lab with that stored report on top, or a "Report not found" screen. It never starts an assessment;
+reports are only produced by pressing Start inside Sentinel.
+
+`DeepLink.target(from:)` accepts exactly these. Links with a query, fragment, extra path component or any other
 host are rejected. There is deliberately **no** link that starts a scan, sends a request, connects to a node,
 changes a setting or deletes data, so a shortcut can never trigger an operation: the user always lands on a screen
 and decides there.
@@ -35,7 +46,9 @@ and decides there.
 | `verifiedCapabilities` / `totalCapabilities` | Counts only. |
 | `previewMode` | Whether demonstration data is showing. |
 
-It carries no identifiers, addresses, packet data, endpoints or credentials. The app does not write it anywhere yet.
+| `recentAssessments` | Optional (additive): up to five Security Lab report references: id, module, status, times, finding count and highest severity. No scope, evidence or findings. |
+
+It carries no addresses, packet data, endpoints, findings or credentials; report contents stay in Sentinel. The app does not write it anywhere yet.
 
 ## Decisions needed before building it
 

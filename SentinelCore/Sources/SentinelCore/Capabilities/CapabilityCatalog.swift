@@ -75,13 +75,41 @@ public enum CapabilityCatalog {
             summary: "Sends block/allow rules to a privileged helper that reports it can apply them.",
             tier: .privilegedHelper, implementation: .included,
             verificationMethod: "Requires an authenticated helper whose capability report lists setFilterRules; confirmed when it accepts a rule set.",
-            limits: "Sentinel only sends validated rules. Filtering itself is done by the helper; no helper has been built, so this stays unavailable until one is.")
+            limits: "Sentinel only sends validated rules. Filtering itself is done by the helper; no helper has been built, so this stays unavailable until one is."),
+        CapabilityDescriptor(
+            id: .secretScanning, title: "Secret Scanner",
+            summary: "Looks for likely exposed credentials in folders and archives you select, on this device.",
+            tier: .onDevice, implementation: .included,
+            verificationMethod: "Scan a folder or archive; it is confirmed when a scan completes with at least one text file read.",
+            limits: "Pattern matching cannot prove a credential is active, and Sentinel never tests found credentials. Nothing is uploaded."),
+        CapabilityDescriptor(
+            id: .exposureCheck, title: "Exposure Check",
+            summary: "Checks HTTP/HTTPS services you own or may test: reachability, TLS, HTTPS redirect, headers and version banners.",
+            tier: .onDevice, implementation: .included,
+            verificationMethod: "Run a check; it is confirmed when a target you entered returns an HTTP response.",
+            limits: "Only the URLs you enter, with plain GET requests. No exploits, credential guessing or scanning for other hosts; banners and headers are observations only."),
+        CapabilityDescriptor(
+            id: .authDefenseLab, title: "Authentication Defense Lab",
+            summary: "Measures lockout, rate limiting, error messages and event logging of Sentinel's bundled local login service.",
+            tier: .onDevice, implementation: .included,
+            verificationMethod: "Run the lab assessment; it is confirmed when the bundled lab answers a login attempt.",
+            limits: "Restricted to the bundled lab and its synthetic accounts. Real services cannot be targeted from this module."),
+        CapabilityDescriptor(
+            id: .serverAssessments, title: "Assessments on a paired HCG Server",
+            summary: "Running heavier Security Lab assessments on an HCG Server you have paired and authorised.",
+            tier: .externalNode,
+            implementation: .interfaceOnly("The contract is defined in docs/SECURITY_LAB_SERVER.md, but HCG Server has no assessment API yet and cannot pair with an iPhone, so every assessment runs on this device."),
+            verificationMethod: "Requires an HCG Server that implements the Security Lab contract and reports the module as supported.",
+            limits: "Pairing a server never enables anything by itself; each module needs the server's own capability report and an explicit scope.")
     ]
 
     public static func initialEnvironment(for id: CapabilityID) -> EnvironmentSupport {
         switch id {
-        case .connectionDiagnostics, .captureFileInspection, .requestComposer, .networkAssessment:
+        case .connectionDiagnostics, .captureFileInspection, .requestComposer, .networkAssessment,
+             .secretScanning, .exposureCheck, .authDefenseLab:
             return .supported
+        case .serverAssessments:
+            return .unknown("No HCG Server with a Security Lab interface is paired.")
         case .nearbyWifiDiscovery:
             return .unknown("Needs an authenticated node that offers Wi-Fi scanning. iOS itself provides no scanning API to ordinary apps.")
         case .bluetoothDiscovery:

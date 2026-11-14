@@ -32,7 +32,7 @@ final class CapabilityTests: XCTestCase {
 
     func testInterfaceOnlyCapabilitiesCanNeverBeVerified() {
         let registry = CapabilityRegistry()
-        for id in [CapabilityID.deviceWideCapture, .macDebugProxy] {
+        for id in [CapabilityID.deviceWideCapture, .macDebugProxy, .serverAssessments] {
             registry.setUserEnabled(id, true)
             registry.setEnvironment(id, .supported)
             XCTAssertFalse(registry.recordVerified(id, evidence: "claimed"))

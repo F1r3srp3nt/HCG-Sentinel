@@ -37,9 +37,17 @@
 			isa = PBXBuildFile;
 			fileRef = 31C5859F99483F16DD7B2062;
 		};
+		2D1E1A10BBC58CBC5A90A567 = {
+			isa = PBXBuildFile;
+			fileRef = DE21A280EA0732BB6BC4756D;
+		};
 		304BCD622FA11070B734B848 = {
 			isa = PBXBuildFile;
 			fileRef = B2656B33FA9426E806C4D254;
+		};
+		3099FDA331A9AED9794C57BF = {
+			isa = PBXBuildFile;
+			fileRef = 8953467BB375D3F422963209;
 		};
 		38BC38D3C648A528AB7E0793 = {
 			isa = PBXBuildFile;
@@ -61,6 +69,10 @@
 			isa = PBXBuildFile;
 			fileRef = E9904427C1AC4207661F6226;
 		};
+		4F7DDC71E44C334F93985BC4 = {
+			isa = PBXBuildFile;
+			fileRef = 8953467BB375D3F422963209;
+		};
 		4F98B60C1E04FE6F8015F636 = {
 			isa = PBXBuildFile;
 			fileRef = B45CDB043CA134786722F0CF;
@@ -81,6 +93,10 @@
 			isa = PBXBuildFile;
 			fileRef = BCD7F464D35F9BBE2B3F584E;
 		};
+		5AC496A0228B274533FEFAD5 = {
+			isa = PBXBuildFile;
+			fileRef = DE21A280EA0732BB6BC4756D;
+		};
 		5AD8CB302B66DDC8D6E11F69 = {
 			isa = PBXBuildFile;
 			fileRef = 1872EE232338710C27AB82C7;
@@ -96,6 +112,10 @@
 		6E90E190FD7DF70E0E94BFED = {
 			isa = PBXBuildFile;
 			fileRef = CDDBFBE5C403BA9743998BE6;
+		};
+		76273B9F17CA2AC636E74465 = {
+			isa = PBXBuildFile;
+			fileRef = BA1DEA5F23D47369D5EA3AF6;
 		};
 		790D0812F4C07F819ED05A47 = {
 			isa = PBXBuildFile;
@@ -128,6 +148,10 @@
 		8BE2A0906D77091D57CC855C = {
 			isa = PBXBuildFile;
 			fileRef = 5C4848C94B72C491235569FA;
+		};
+		8CA226AEE999AE86C78419D9 = {
+			isa = PBXBuildFile;
+			fileRef = BA1DEA5F23D47369D5EA3AF6;
 		};
 		8F7164C86593E399E677FBA3 = {
 			isa = PBXBuildFile;
@@ -177,6 +201,10 @@
 			isa = PBXBuildFile;
 			fileRef = E9904427C1AC4207661F6226;
 		};
+		D1306221E2CD99F7610FEAFF = {
+			isa = PBXBuildFile;
+			fileRef = 129E2D3986154F1EA268EA56;
+		};
 		D3E71E4C4E3A9531FEBCDE37 = {
 			isa = PBXBuildFile;
 			fileRef = C6B9776991A6ACE26BA549EE;
@@ -197,6 +225,10 @@
 			isa = PBXBuildFile;
 			fileRef = 69F325EE7EC20A3C1C3AD4EE;
 		};
+		EB57B4772751E74F60188A1A = {
+			isa = PBXBuildFile;
+			fileRef = 129E2D3986154F1EA268EA56;
+		};
 		ECFE217818CBDB65841F2FDB = {
 			isa = PBXBuildFile;
 			fileRef = B2656B33FA9426E806C4D254;
@@ -204,6 +236,10 @@
 		F02E98F076DCF261EB8F25F7 = {
 			isa = PBXBuildFile;
 			fileRef = 4751A22D65F1D1961EC45604;
+		};
+		F3F7C896614BEC81FA85F020 = {
+			isa = PBXBuildFile;
+			fileRef = C2422B703FDCCE97662D43A2;
 		};
 		F73CDB9CD02E3FC77A88B4D5 = {
 			isa = PBXBuildFile;
@@ -223,6 +259,12 @@
 			proxyType = 1;
 			remoteGlobalIDString = 3FF5336FD5D9D57BED527C38;
 			remoteInfo = HCGSentinel;
+		};
+		129E2D3986154F1EA268EA56 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = SecurityLabComponents.swift;
+			sourceTree = "<group>";
 		};
 		16B7D591CAA76D555A803EF1 = {
 			isa = PBXFileReference;
@@ -304,6 +346,12 @@
 			path = WebSocketNodeTransport.swift;
 			sourceTree = "<group>";
 		};
+		8953467BB375D3F422963209 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = SecurityLabModel.swift;
+			sourceTree = "<group>";
+		};
 		8F0E96B575BE00FE93154471 = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -359,6 +407,12 @@
 			path = FilteringCard.swift;
 			sourceTree = "<group>";
 		};
+		BA1DEA5F23D47369D5EA3AF6 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = SecurityModuleViews.swift;
+			sourceTree = "<group>";
+		};
 		BCD7F464D35F9BBE2B3F584E = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -369,6 +423,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			path = SystemViews.swift;
+			sourceTree = "<group>";
+		};
+		C2422B703FDCCE97662D43A2 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = SecurityLabAppTests.swift;
 			sourceTree = "<group>";
 		};
 		C2EE7BFA497C83E8CB6CC4C5 = {
@@ -405,6 +465,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
 			path = HCGSentinelApp.swift;
+			sourceTree = "<group>";
+		};
+		DE21A280EA0732BB6BC4756D = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = SecurityLabView.swift;
 			sourceTree = "<group>";
 		};
 		E9904427C1AC4207661F6226 = {
@@ -495,9 +561,21 @@
 			path = Theme;
 			sourceTree = "<group>";
 		};
+		8307520261DB5FBF531718F4 = {
+			isa = PBXGroup;
+			children = (
+				129E2D3986154F1EA268EA56,
+				8953467BB375D3F422963209,
+				DE21A280EA0732BB6BC4756D,
+				BA1DEA5F23D47369D5EA3AF6,
+			);
+			path = SecurityLab;
+			sourceTree = "<group>";
+		};
 		98E8A36B4FB7934181228642 = {
 			isa = PBXGroup;
 			children = (
+				8307520261DB5FBF531718F4,
 				8F0E96B575BE00FE93154471,
 				BCD7F464D35F9BBE2B3F584E,
 				B2656B33FA9426E806C4D254,
@@ -540,6 +618,7 @@
 				A091C20761EA4F0FAF6E04A1,
 				4751A22D65F1D1961EC45604,
 				CD42F08BBEBE850DF40BF21E,
+				C2422B703FDCCE97662D43A2,
 			);
 			path = HCGSentinelTests;
 			sourceTree = "<group>";
@@ -660,6 +739,10 @@
 			files = (
 				5569C91EB42F4D9A37E647AD,
 				E698F4B5A7F650E848DD6916,
+				D1306221E2CD99F7610FEAFF,
+				4F7DDC71E44C334F93985BC4,
+				2D1E1A10BBC58CBC5A90A567,
+				8CA226AEE999AE86C78419D9,
 				66B5498E9B41A9383E2A456F,
 				59C3C87C9DFE2C7974F731C9,
 				ECFE217818CBDB65841F2FDB,
@@ -691,6 +774,7 @@
 				BCF9D3424C7921671D089749,
 				F02E98F076DCF261EB8F25F7,
 				7B8B027BDD33649C3F52BD01,
+				F3F7C896614BEC81FA85F020,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -700,6 +784,10 @@
 			files = (
 				8761A8A77150FEDE77F3CE85,
 				097A1B3FD549A24C3A5B094D,
+				EB57B4772751E74F60188A1A,
+				3099FDA331A9AED9794C57BF,
+				5AC496A0228B274533FEFAD5,
+				76273B9F17CA2AC636E74465,
 				03DB76429F34AF7AD922F784,
 				3A34F2F87743BC90D7C3E317,
 				304BCD622FA11070B734B848,
