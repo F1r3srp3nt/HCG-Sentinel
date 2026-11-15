@@ -163,9 +163,9 @@ Maker builds a **copy** of the folder or ZIP taken at import, not the folder its
 “Imported copy” whether that copy still matches the original (and the original's Git commit); **Refresh source**
 copies it again without losing the project or the scheme choice. **Copy diagnostic report** (or
 `HCGExecutableMaker --diagnose-mobile`) lists SHA-256 hashes of the files that decide schemes and deployment targets.
-For `main` at 03bc6e5 they are:
+They have been the same from 03bc6e5 through 490858c (`main` when this was written; later commits that do not touch the Xcode project or schemes keep them):
 
-| File | SHA-256 at 03bc6e5 (`main`) | at 810c6f9 (older) |
+| File | SHA-256 at 03bc6e5 … 490858c (`main`) | at 810c6f9 (older) |
 | --- | --- | --- |
 | `HCGSentinel.xcodeproj/project.pbxproj` | `8a5c6cfbcd930074f61284538a64fd191bb31f2d3d665b05c5c66f73afe9e0b0` | `38d95aa724b0fad6f99806ff5ccf70d260af0f03433162a9b94ce0b0850b2545` |
 | `…/xcschemes/HCGSentinel.xcscheme` | `3cdf71c801f54e86d68b905672bcddf8d70cbf1ab597f00cc66b1ca08ad254a1` | same |
