@@ -3,7 +3,7 @@ import SwiftUI
 /// HCG Sentinel visual identity: obsidian surfaces, brushed-metal edges,
 /// precise cyan illumination and restrained violet highlights.
 enum Theme {
-    /// Pure black, matching the SentinelHeader banner.
+    /// Pure black, the background of the HCG brand lockup.
     static let obsidian = Color.black
     static let obsidianRaised = Color(red: 0.035, green: 0.040, blue: 0.050)
     static let panel = Color(red: 0.065, green: 0.072, blue: 0.088)

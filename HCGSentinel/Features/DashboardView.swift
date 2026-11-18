@@ -61,14 +61,9 @@ struct DashboardView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Image("SentinelHeader")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                // Capped so the status cards stay in view on small iPhones and in landscape.
-                .frame(maxWidth: 520, maxHeight: 150)
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel("HCG Sentinel")
-                .accessibilityAddTraits(.isHeader)
+            // [HCG mark] | SENTINEL, in HCG Store's proportions, scaled to the width (at most 1.5× Store's size).
+            ScaledHCGLockup(word: "SENTINEL", maxScale: 1.5)
+                .padding(.top, 4)
             SweepLine()
             AdaptiveStack {
                 StatusPill(text: app.activeOperations.isEmpty ? "Idle" : "\(app.activeOperations.count) running",

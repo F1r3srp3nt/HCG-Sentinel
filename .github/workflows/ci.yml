@@ -175,6 +175,20 @@ jobs:
           done
           xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
           for file in screenshots/*.png; do sips -Z 1400 "$file" >/dev/null; done
+      - name: Record the dashboard header (animation preview)
+        timeout-minutes: 5
+        run: |
+          xcrun simctl ui "$SIMULATOR_UDID" content_size large
+          xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+          sleep 1
+          xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection dashboard
+          sleep 8
+          xcrun simctl io "$SIMULATOR_UDID" recordVideo --codec h264 --force screenshots/dashboard-header.mp4 &
+          recorder=$!
+          sleep 8
+          kill -INT "$recorder"
+          wait "$recorder" || true
+          ls -la screenshots/dashboard-header.mp4
       - uses: actions/upload-artifact@v4
         if: always()
         with:

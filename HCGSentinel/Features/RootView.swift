@@ -111,12 +111,7 @@ private struct RegularLayout: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
             VStack(alignment: .leading, spacing: 6) {
-                Image("SentinelHeader")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 64)
-                    .accessibilityLabel("HCG Sentinel")
-                    .accessibilityAddTraits(.isHeader)
+                ScaledHCGLockup(word: "SENTINEL", maxScale: 1.0)
                 SweepLine()
             }
             .padding(.horizontal, 16)
