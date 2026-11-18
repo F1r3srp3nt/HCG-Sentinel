@@ -5,6 +5,16 @@ What has actually been checked, and how. "Not done" means exactly that.
 Sources: CI runs on GitHub Actions. Complete logs and `.xcresult` bundles are attached to each *Archive check*
 run as artifacts: <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/workflows/archive.yml>
 
+## Dashboard header: HCG Store lockup
+
+| What | How it was checked | Result |
+| --- | --- | --- |
+| Mark is HCG Store's own asset | SHA-256 of `HCGSentinel/Resources/Brand/hcg-mark-{240,480}.webp` against `web-hcg-store/public/brand/` (store commit 835ac1a) | Identical; alpha channel present; 240×109 and 480×218. |
+| Bundled and loads offline, font registered | `BrandLockupTests` (Simulator, hosted in the app) | Passed: both WebP files decode from the bundle with alpha and the 240:109 ratio; `SpaceGrotesk-SemiBold` is registered; the OFL licence is bundled. |
+| Fits the narrowest iPhone | `BrandLockupTests.testLockupFitsTheNarrowestIPhone` (320-point screen) and Simulator screenshots on an iPhone SE (375 points) | Passed; no clipping. |
+| Larger text sizes | Screenshots at XXXL and accessibility XXL | The lockup keeps its size (a brand mark); the status badge and text below scale and wrap. |
+| Moving light under the lockup | 8-second Simulator recording of the dashboard (CI artifact `dashboard-header.mp4`) | The light travels along the divider as before; still respects Reduce Motion and the Animation switch (unchanged code). |
+
 ## Repair: build targets, Bluetooth discovery, truthful capabilities
 
 | What | How it was checked | Result |
