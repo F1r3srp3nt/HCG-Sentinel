@@ -17,6 +17,7 @@ struct SettingsView: View {
             // Grouped because a view builder takes at most 10 children on iOS 14–16.
             Group {
                 DiagnosticsSettingsCard()
+                AccountSettingsCard()
                 AboutSettingsCard()
             }
         }
@@ -404,12 +405,35 @@ private struct DiagnosticsSettingsCard: View {
     }
 }
 
+// MARK: - HCG account
+
+/// HCG Connect sign-in. Sentinel has no registered HCG Connect client, so this build offers no sign-in rather than
+/// borrowing another app's. Local diagnostics never need an account, and an account never unlocks device privileges.
+private struct AccountSettingsCard: View {
+    var body: some View {
+        SentinelCard {
+            AdaptiveStack {
+                SectionLabel(text: "HCG account")
+                Spacer(minLength: 0)
+                StatusPill(text: "Not available yet", tone: .off)
+            }
+            Text("Not signed in").font(.headline).foregroundColor(Theme.textPrimary)
+            Explanation("Signing in with HCG Connect is not part of this beta: HCG has not yet registered a sign-in client for Sentinel, and Sentinel will not reuse another HCG app's client.")
+            Explanation("Every local tool works without an account. When sign-in arrives it will only add HCG-connected features, such as syncing reports, and it will never grant privileges on this iPhone.")
+        }
+    }
+}
+
 // MARK: - About
 
 private struct AboutSettingsCard: View {
     var body: some View {
         SentinelCard {
             SectionLabel(text: "About")
+            Text("HCG Sentinel Unleashed").font(.headline).foregroundColor(Theme.textPrimary)
+            InfoRow(label: "Version", value: DeviceInfo.appVersion, mono: true)
+            InfoRow(label: "Home Screen name", value: "Sentinel")
+            InfoRow(label: "Bundle ID", value: Bundle.main.bundleIdentifier ?? "—", mono: true)
             Button(action: openRepoPage) {
                 HStack(spacing: 12) {
                     Image(systemName: "safari")

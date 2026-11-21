@@ -164,7 +164,7 @@ def main():
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
         "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": 1,
+        "CURRENT_PROJECT_VERSION": 2,
         "DEVELOPMENT_TEAM": "",
         "GENERATE_INFOPLIST_FILE": "NO",
         "INFOPLIST_FILE": f"{APP_DIR}/Resources/Info.plist",
@@ -199,7 +199,7 @@ def main():
     test_settings = {
         "BUNDLE_LOADER": "$(TEST_HOST)",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": 1,
+        "CURRENT_PROJECT_VERSION": 2,
         "DEVELOPMENT_TEAM": "",
         "GENERATE_INFOPLIST_FILE": "YES",
         "IPHONEOS_DEPLOYMENT_TARGET": DEPLOYMENT_TARGET,

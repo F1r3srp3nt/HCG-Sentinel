@@ -11,6 +11,8 @@ struct DashboardView: View {
     @EnvironmentObject private var requests: RequestModel
     @EnvironmentObject private var check: NetworkCheckModel
     @EnvironmentObject private var lab: SecurityLabModel
+    @EnvironmentObject private var ping: PingModel
+    @EnvironmentObject private var localNetwork: LocalNetworkModel
     @Environment(\.sizeCategory) private var sizeCategory
 
     private let statusColumns = [GridItem(.adaptive(minimum: 300), spacing: 14, alignment: .top)]
@@ -30,6 +32,7 @@ struct DashboardView: View {
             LazyVGrid(columns: statusColumns, spacing: 14) {
                 deviceCard
                 connectionCard
+                diagnosticsStatusCard
                 capabilityCard
                 operationsCard
             }
@@ -65,6 +68,11 @@ struct DashboardView: View {
             ScaledHCGLockup(word: "SENTINEL", maxScale: 1.5)
                 .padding(.top, 4)
             SweepLine()
+            Text("UNLEASHED")
+                .font(.custom(HCGLockup.fontName, size: 11, relativeTo: .caption))
+                .kerning(3.5)
+                .foregroundColor(Theme.cyan.opacity(0.9))
+                .accessibilityLabel("HCG Sentinel Unleashed")
             AdaptiveStack {
                 StatusPill(text: app.activeOperations.isEmpty ? "Idle" : "\(app.activeOperations.count) running",
                            tone: app.activeOperations.isEmpty ? .off : .ready)
@@ -118,6 +126,91 @@ struct DashboardView: View {
             }
             Explanation("This is Sentinel’s own network path as reported by iOS. It is not a view of other apps or devices.")
         }
+    }
+
+    // MARK: Diagnostics status
+
+    private var diagnosticsStatusCard: some View {
+        SentinelCard {
+            SectionLabel(text: "Diagnostics", tone: .info)
+            statusRow("Bluetooth", bluetoothToolStatus, bluetoothSummary)
+            statusRow("Wi-Fi", wifiToolStatus, wifiSummary)
+            statusRow("Local network", localNetwork.status, localSummary)
+            statusRow("Ping", ping.status, pingSummary)
+            Explanation("Nothing here starts by itself. Each tool runs only after you start it, and stops when you stop it, at its limit, or when Sentinel leaves the screen.")
+        }
+    }
+
+    private func statusRow(_ title: String, _ status: ToolStatus, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            AdaptiveStack {
+                Text(title).font(.subheadline.weight(.semibold)).foregroundColor(Theme.textPrimary)
+                Spacer(minLength: 0)
+                StatusPill(text: status.title, tone: status.tone)
+            }
+            Text(detail).font(.caption).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var bluetoothToolStatus: ToolStatus {
+        switch bluetooth.state {
+        case .waitingForRadio, .scanning: return .running
+        case .blocked(.permissionDenied), .blocked(.restricted): return .permissionRequired
+        case .blocked(.unsupported): return .unsupported
+        case .blocked(.disabledInSettings): return .idle
+        case .blocked: return .failed
+        case .idle:
+            if BluetoothPermission.current == .denied || BluetoothPermission.current == .restricted { return .permissionRequired }
+            return bluetooth.scanNumber > 0 ? .completed : .idle
+        }
+    }
+
+    private var bluetoothSummary: String {
+        if case .blocked(let blocker) = bluetooth.state { return blocker.title }
+        let permission: String
+        switch BluetoothPermission.current {
+        case .allowed: permission = "Permission granted"
+        case .denied: permission = "Permission denied in iOS Settings"
+        case .restricted: permission = "Restricted on this device"
+        case .notDetermined: permission = "iOS asks for permission at the first scan"
+        }
+        if bluetooth.scanNumber > 0 {
+            return "\(permission) · last scan listed \(bluetooth.peripherals.count) device(s)"
+        }
+        return permission
+    }
+
+    private var wifiToolStatus: ToolStatus {
+        guard let snapshot = connection.snapshot else { return .idle }
+        return snapshot.usesWiFi ? .completed : .unsupported
+    }
+
+    private var wifiSummary: String {
+        guard let snapshot = connection.snapshot else { return "Waiting for iOS to report the connection" }
+        guard snapshot.usesWiFi else { return "Not connected to Wi-Fi. Nearby-network scanning is not available to iOS apps." }
+        if let v4 = snapshot.ipv4Networks.first(where: { $0.interface.hasPrefix("en") }) {
+            return "Connected · \(v4.address) on \(v4.network)\(snapshot.gateways.isEmpty ? "" : " · gateway \(snapshot.gateways[0])")"
+        }
+        return "Connected"
+    }
+
+    private var localSummary: String {
+        if localNetwork.sweepRunning, let progress = localNetwork.sweepProgress { return "Sweeping: \(progress.done) of \(progress.total) addresses" }
+        if localNetwork.isBrowsing { return "Browsing for Bonjour services" }
+        if case .permissionDenied = localNetwork.browseState { return "Local network access is off in iOS Settings" }
+        var parts: [String] = []
+        if case .finished = localNetwork.browseState { parts.append("\(localNetwork.services.count) Bonjour service(s)") }
+        if localNetwork.sweepFinishedAt != nil { parts.append("\(localNetwork.sweepResults.filter { $0.responded }.count) address(es) answered the last sweep") }
+        return parts.isEmpty ? "Not run this session" : parts.joined(separator: " · ")
+    }
+
+    private var pingSummary: String {
+        guard let run = ping.current else { return "Not run this session" }
+        if let failure = run.failure, run.results.isEmpty { return failure }
+        let stats = run.statistics
+        let loss = stats.lossPercent.map { String(format: "%.0f%% loss", $0) } ?? ""
+        return "\(run.host): \(stats.received)/\(stats.sent) answered\(loss.isEmpty ? "" : " · " + loss)"
     }
 
     private var capabilityCard: some View {

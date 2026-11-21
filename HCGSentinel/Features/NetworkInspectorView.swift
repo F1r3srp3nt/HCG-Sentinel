@@ -11,6 +11,7 @@ struct NetworkInspectorView: View {
     var body: some View {
         Screen {
             if network.previewMode { PreviewBanner() }
+            NetworkToolsCard()
             SectionLabel(text: "This app’s connection")
             NavigationLink(destination: NetworkCheckView()) {
                 SentinelCard(highlight: Theme.cyan) {

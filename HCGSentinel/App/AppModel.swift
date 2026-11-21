@@ -31,6 +31,8 @@ final class AppModel: ObservableObject {
     let helper: HelperModel
     let networkCheck: NetworkCheckModel
     let securityLab: SecurityLabModel
+    let ping: PingModel
+    let localNetwork: LocalNetworkModel
 
     private let store: SettingsStore
     private var timer: Timer?
@@ -63,6 +65,8 @@ final class AppModel: ObservableObject {
         requests = RequestModel(transport: URLSessionHTTPTransport(), log: log, registry: registry)
         helper = HelperModel(log: log, registry: registry)
         networkCheck = NetworkCheckModel(probe: PlatformNetworkProbe(), log: log, registry: registry)
+        ping = PingModel(log: log)
+        localNetwork = LocalNetworkModel(log: log)
         securityLab = SecurityLabModel(store: SecurityReportStore(directory: support.appendingPathComponent("SecurityLab/Reports", isDirectory: true)),
                                        log: log, registry: registry)
 
@@ -78,7 +82,7 @@ final class AppModel: ObservableObject {
         registerOperations()
         for model in [bluetooth.objectWillChange, network.objectWillChange, radio.objectWillChange,
                       requests.objectWillChange, helper.objectWillChange, networkCheck.objectWillChange,
-                      securityLab.objectWillChange] {
+                      securityLab.objectWillChange, ping.objectWillChange, localNetwork.objectWillChange] {
             model.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshOperations() }.store(in: &cancellables)
         }
 
@@ -110,6 +114,14 @@ final class AppModel: ObservableObject {
     /// a reason in the activity log, rather than left to fail silently in the background.
     func sceneDidEnterBackground() {
         bluetooth.appDidEnterBackground()
+        if ping.isRunning {
+            log.record(.network, "Ping stopped because Sentinel moved to the background")
+            ping.stop()
+        }
+        if localNetwork.isActive {
+            log.record(.network, "Local network discovery stopped because Sentinel moved to the background")
+            localNetwork.stopAll()
+        }
     }
 
     private func tick() {
@@ -133,6 +145,12 @@ final class AppModel: ObservableObject {
         operations.register(OperationHandle(id: "helper", title: "Helper session",
                                             isActive: { [helper] in helper.state.isActive },
                                             stop: { [helper] in helper.disconnect() }))
+        operations.register(OperationHandle(id: "ping", title: "Ping",
+                                            isActive: { [ping] in ping.isRunning },
+                                            stop: { [ping] in ping.stop() }))
+        operations.register(OperationHandle(id: "localnetwork", title: "Local network discovery",
+                                            isActive: { [localNetwork] in localNetwork.isActive },
+                                            stop: { [localNetwork] in localNetwork.stopAll() }))
         operations.register(OperationHandle(id: "networkcheck", title: "Network check",
                                             isActive: { [networkCheck] in networkCheck.isRunning },
                                             stop: { [networkCheck] in networkCheck.cancel() }))
