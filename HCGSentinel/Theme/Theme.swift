@@ -9,6 +9,8 @@ enum Theme {
     static let panel = Color(red: 0.065, green: 0.072, blue: 0.088)
     static let panelInset = Color(red: 0.030, green: 0.034, blue: 0.042)
     static let hairline = Color.white.opacity(0.10)
+    /// HCG Store's `--line-strong`, the divider between the HCG mark and the product name.
+    static let brandDivider = Color(red: 206 / 255, green: 220 / 255, blue: 236 / 255).opacity(0.15)
 
     static let cyan = Color(red: 0.25, green: 0.87, blue: 0.96)
     static let violet = Color(red: 0.66, green: 0.57, blue: 0.99)
@@ -328,6 +330,41 @@ struct PulseDot: View {
 }
 
 /// A thin line of cyan light that travels across a surface. Static when motion is off.
+/// The HCG product lockup from HCG Store's navigation header: the chrome HCG mark, a hairline divider and the product
+/// name in spaced capitals. Proportions follow Store's `.brand` rules (web-hcg-store/src/styles/layout.css): mark 88 pt
+/// wide (72 pt on narrow screens, as Store does below 480 px), 10 pt gap, 1 pt divider with 12 pt padding, name 15 pt
+/// semibold with 0.32 em letter spacing. The mark is Store's own asset, bundled as `HCGMark`, so it works offline.
+struct BrandLockup: View {
+    let product: String
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    /// Follows Dynamic Type up to a third larger, then stops: it is a mark, and stays on one line on a 320-point screen.
+    @ScaledMetric(relativeTo: .headline) private var scaledName: CGFloat = 15
+
+    private var nameSize: CGFloat { min(scaledName, 20) }
+    private var scale: CGFloat { nameSize / 15 }
+    private var markWidth: CGFloat { (sizeClass == .regular ? 88 : 72) * scale }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10 * scale) {
+            Image("HCGMark")
+                .resizable()
+                .aspectRatio(contentMode: .fit) // 480 × 218 artwork: never stretched or cropped
+                .frame(width: markWidth)
+            Text(product.uppercased())
+                .font(.system(size: nameSize, weight: .semibold))
+                .tracking(nameSize * 0.32)
+                .foregroundColor(Theme.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.leading, 12 * scale)
+                .overlay(Rectangle().fill(Theme.brandDivider).frame(width: 1), alignment: .leading)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("HCG \(product.capitalized)")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
 struct SweepLine: View {
     @Environment(\.sentinelMotion) private var motion
     @State private var travelled = false
