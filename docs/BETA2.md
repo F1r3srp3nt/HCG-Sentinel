@@ -161,7 +161,11 @@ iPad Simulator, from the same commit as the package: [dashboard](screenshots/bet
 [Network tools](screenshots/beta2/ipad-tools-network.jpg), [Wi-Fi](screenshots/beta2/ipad-tools-wifi.jpg),
 [Local Network](screenshots/beta2/ipad-tools-local.jpg), [Ping](screenshots/beta2/ipad-tools-ping.jpg). The Ping
 screenshot is a real ICMP run to the Simulator's loopback address: 5 of 5 answered, 0 % loss, 0.11 / 0.20 / 0.42 ms.
-The Simulator has no Bluetooth or Wi-Fi radio; those screens prove layout and wording, not radio behaviour.
+Small iPhone Simulator: [Network tools](screenshots/beta2/iphone-tools-network.jpg),
+[Ping](screenshots/beta2/iphone-tools-ping.jpg), [Wi-Fi](screenshots/beta2/iphone-tools-wifi.jpg),
+[Local Network](screenshots/beta2/iphone-tools-local.jpg), and the
+[dashboard at the largest accessibility text size](screenshots/beta2/iphone-dashboard-accessibility-xxl.jpg):
+nothing clipped or overlapping. The Simulator has no Bluetooth or Wi-Fi radio; those screens prove layout and wording, not radio behaviour.
 
 ## Release proposal
 
