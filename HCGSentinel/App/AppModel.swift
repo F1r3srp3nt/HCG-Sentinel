@@ -106,6 +106,12 @@ final class AppModel: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
     }
 
+    /// iOS suspends Sentinel shortly after it leaves the screen. Anything that probes or listens is stopped here, with
+    /// a reason in the activity log, rather than left to fail silently in the background.
+    func sceneDidEnterBackground() {
+        bluetooth.appDidEnterBackground()
+    }
+
     private func tick() {
         bluetooth.tick()
         radio.tick()

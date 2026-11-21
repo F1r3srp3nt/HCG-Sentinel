@@ -56,6 +56,7 @@ struct BluetoothExplorerView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
+            if !isPreview { BluetoothDiagnosticsCard(diagnostics: bluetooth.diagnostics, now: now) }
             knowledgeCard
         }
         .navigationBarTitle("Bluetooth Explorer", displayMode: .inline)
@@ -189,7 +190,11 @@ struct BluetoothExplorerView: View {
                 .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             Label("Not continuity. iOS gives each device an identifier for this app; devices that change their address can appear as new entries.", systemImage: "xmark.circle")
                 .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
-            Explanation("Unknown devices (no broadcast name) are normal and are not a sign of anything malicious. Sentinel does not connect to devices.")
+            Label("Not classic Bluetooth. iOS lets apps discover Bluetooth LE advertisers only; classic devices (older headsets, car kits, speakers in pairing mode) never appear here, and no public iOS interface can list them.", systemImage: "xmark.circle")
+                .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Label("Not devices already connected to this iPhone, such as your AirPods or Apple Watch: iOS hides devices that are connected to it and not advertising.", systemImage: "xmark.circle")
+                .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Explanation("Unknown devices (no broadcast name) are normal and are not a sign of anything malicious. Sentinel never pairs with or connects to devices.")
         }
     }
 
@@ -249,7 +254,7 @@ struct BluetoothExplorerView: View {
         switch status.kind {
         case .scanningNothingYet, .starting: return "Listening…"
         case .scanningNoResults: return "Nothing heard yet"
-        case .permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting: return "No results while Bluetooth is unavailable"
+        case .permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting, .noResponse: return "No results while Bluetooth is unavailable"
         default: return "No devices listed"
         }
     }
@@ -259,7 +264,7 @@ struct BluetoothExplorerView: View {
         switch status.kind {
         case .scanningNothingYet, .starting: return "Devices appear here as soon as an advertisement is received."
         case .scanningNoResults: return "Keep scanning, or move closer to a device you expect. Phones, watches and headphones often advertise only while in use or pairing."
-        case .permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting: return "Fix the problem shown above first; Sentinel cannot hear devices until then."
+        case .permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting, .noResponse: return "Fix the problem shown above first; Sentinel cannot hear devices until then."
         default: return "Start a scan to list Bluetooth LE devices that are advertising nearby."
         }
     }
@@ -480,5 +485,54 @@ struct SignalHistoryChart: View {
                 .stroke(Theme.cyan, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             }
         }
+    }
+}
+
+/// What Sentinel and iOS's Bluetooth service actually exchanged, so a scan that does not work on a device can be
+/// reported with its real cause. Holds no device identifiers or advertisement contents.
+struct BluetoothDiagnosticsCard: View {
+    let diagnostics: BluetoothDiagnostics
+    let now: Date
+    @State private var expanded = false
+    @State private var copied = false
+
+    var body: some View {
+        SentinelCard {
+            DisclosureGroup(isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(diagnostics.report(now: now))
+                        .font(Theme.mono(.caption))
+                        .foregroundColor(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .selectableText()
+                    Button(copied ? "Copied" : "Copy diagnostics") {
+                        UIPasteboard.general.string = diagnostics.report(now: Date())
+                        copied = true
+                    }
+                    .font(.footnote)
+                    Explanation("Copy this into a bug report if scanning does not work. It contains states, counts and times only: no device names, identifiers or advertisement data.")
+                }
+                .padding(.top, 6)
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Bluetooth diagnostics").font(.headline).foregroundColor(Theme.textPrimary)
+                    Text(summary).font(.caption).foregroundColor(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .accentColor(Theme.cyan)
+        }
+    }
+
+    private var summary: String {
+        let state = diagnostics.lastRadioState?.diagnosticName ?? "not asked yet"
+        let permission = diagnostics.lastAuthorization?.diagnosticName ?? "not read yet"
+        return "iOS state: \(state) · permission: \(permission) · advertisements: \(diagnostics.advertisementsTotal)"
+    }
+}
+
+private extension View {
+    @ViewBuilder func selectableText() -> some View {
+        if #available(iOS 15.0, *) { self.textSelection(.enabled) } else { self }
     }
 }

@@ -11,6 +11,8 @@ public struct BluetoothScreenStatus: Equatable {
         case bluetoothOff
         case unsupported
         case resetting
+        /// iOS did not report a usable Bluetooth state in time; the card shows the last state it did report.
+        case noResponse
         /// Started; iOS has not reported that Bluetooth is ready (it may be showing the permission prompt).
         case starting
         /// Scanning, and nothing has been heard yet in this scan.
@@ -38,7 +40,7 @@ public struct BluetoothScreenStatus: Equatable {
     public var symbol: String
     public var isActive: Bool { kind == .starting || kind == .scanningNothingYet || kind == .scanningNoResults || kind == .scanningWithResults }
     public var isProblem: Bool {
-        [.permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting].contains(kind)
+        [.permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting, .noResponse].contains(kind)
     }
 
     /// After this many seconds of scanning with nothing heard, the card says so plainly.
@@ -69,6 +71,10 @@ public struct BluetoothScreenStatus: Equatable {
             return BluetoothScreenStatus(kind: .resetting, title: "Bluetooth is restarting",
                                          detail: "The system Bluetooth service is restarting. Try again in a moment.",
                                          primaryAction: .start, symbol: "arrow.clockwise")
+        case .blocked(.noResponse(let lastState, let authorization)):
+            let blocker = BluetoothScanBlocker.noResponse(lastState: lastState, authorization: authorization)
+            return BluetoothScreenStatus(kind: .noResponse, title: blocker.title, detail: blocker.guidance,
+                                         primaryAction: .start, symbol: "exclamationmark.triangle.fill")
         case .waitingForRadio:
             return BluetoothScreenStatus(kind: .starting, title: "Starting…",
                                          detail: "Waiting for iOS to report that Bluetooth is ready. If iOS asks for Bluetooth permission, choose Allow.",

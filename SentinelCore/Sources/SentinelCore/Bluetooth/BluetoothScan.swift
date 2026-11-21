@@ -201,6 +201,9 @@ public enum BluetoothScanBlocker: Equatable {
     case poweredOff
     case unsupported
     case resetting
+    /// iOS did not report a usable Bluetooth state within the time limit after the scan was requested. The last state
+    /// and permission iOS did report are kept, so the screen can show them as they are.
+    case noResponse(lastState: BluetoothRadioState, authorization: BluetoothAuthorization)
 
     public var title: String {
         switch self {
@@ -210,6 +213,7 @@ public enum BluetoothScanBlocker: Equatable {
         case .poweredOff: return "Bluetooth is turned off"
         case .unsupported: return "Bluetooth LE is not available"
         case .resetting: return "Bluetooth is restarting"
+        case .noResponse: return "Bluetooth did not respond"
         }
     }
 
@@ -227,7 +231,93 @@ public enum BluetoothScanBlocker: Equatable {
             return "This device or simulator has no Bluetooth LE radio available to apps."
         case .resetting:
             return "The system Bluetooth service is restarting. Try again in a moment."
+        case .noResponse(let state, let authorization):
+            return "iOS did not report that Bluetooth is ready within \(Int(BluetoothScanController.radioWaitLimit)) s of starting the scan. "
+                + "Last state reported: \(state.diagnosticName); permission: \(authorization.diagnosticName). "
+                + "Check that Bluetooth is on and that Sentinel is allowed in iOS Settings › Sentinel › Bluetooth, then start again."
         }
+    }
+}
+
+public extension BluetoothRadioState {
+    /// The platform's own name for the state, for diagnostics (CBManagerState).
+    var diagnosticName: String {
+        switch self {
+        case .unknown: return "unknown"
+        case .resetting: return "resetting"
+        case .unsupported: return "unsupported"
+        case .unauthorized: return "unauthorized"
+        case .poweredOff: return "poweredOff"
+        case .poweredOn: return "poweredOn"
+        }
+    }
+}
+
+public extension BluetoothAuthorization {
+    /// The platform's own name for the permission, for diagnostics (CBManagerAuthorization).
+    var diagnosticName: String {
+        switch self {
+        case .notDetermined: return "notDetermined"
+        case .restricted: return "restricted"
+        case .denied: return "denied"
+        case .allowed: return "allowedAlways"
+        }
+    }
+}
+
+/// What actually happened between Sentinel and iOS's Bluetooth service, recorded as it happened so a failure on a
+/// device can be reported with its real cause. Holds no device identifiers or advertisement contents.
+public struct BluetoothDiagnostics: Equatable {
+    public struct Event: Equatable {
+        public var at: Date
+        public var text: String
+    }
+
+    public static let maxEvents = 40
+
+    /// When Sentinel first asked iOS for Bluetooth (creating the central manager). Nil until the first scan.
+    public var managerRequestedAt: Date?
+    public var stateUpdates = 0
+    public var lastRadioState: BluetoothRadioState?
+    public var lastAuthorization: BluetoothAuthorization?
+    public var lastStateAt: Date?
+    public var scanRequestedAt: Date?
+    public var scanStartedAt: Date?
+    public var advertisementsThisScan = 0
+    public var advertisementsTotal = 0
+    public var lastAdvertisementAt: Date?
+    public var allowDuplicates = false
+    public var lastProblem: String?
+    public private(set) var events: [Event] = []
+
+    public init() {}
+
+    mutating func record(_ text: String, at time: Date) {
+        events.append(Event(at: time, text: text))
+        if events.count > BluetoothDiagnostics.maxEvents { events.removeFirst(events.count - BluetoothDiagnostics.maxEvents) }
+    }
+
+    /// Plain text for copying into a bug report.
+    public func report(now: Date) -> String {
+        func age(_ date: Date?) -> String {
+            guard let date = date else { return "never" }
+            return "\(Int(now.timeIntervalSince(date).rounded())) s ago"
+        }
+        var lines = [
+            "Bluetooth diagnostics",
+            "Central manager requested: \(age(managerRequestedAt))",
+            "State updates from iOS: \(stateUpdates); last: \(lastRadioState?.diagnosticName ?? "none") (\(age(lastStateAt)))",
+            "Permission: \(lastAuthorization?.diagnosticName ?? "not read yet")",
+            "Scan requested: \(age(scanRequestedAt)); scan started: \(age(scanStartedAt))",
+            "Advertisements this scan: \(advertisementsThisScan); total: \(advertisementsTotal); last: \(age(lastAdvertisementAt))",
+            "Duplicate reports: \(allowDuplicates ? "on (continuous updates)" : "off (iOS reports each device about once per scan)")",
+            "Last problem: \(lastProblem ?? "none")",
+        ]
+        lines.append("Events:")
+        for event in events {
+            lines.append("  -\(Int(now.timeIntervalSince(event.at).rounded())) s  \(event.text)")
+        }
+        return lines.joined(separator: "\n")
     }
 }
 
@@ -249,12 +339,16 @@ public enum BluetoothScanState: Equatable {
 /// Confine to the main queue.
 public final class BluetoothScanController: BluetoothCentralDelegate {
     public static let maxPeripherals = 500
+    /// Seconds to wait for iOS to report a usable Bluetooth state after a scan is requested (this includes the time the
+    /// permission prompt is on screen) before saying so, rather than showing "Starting…" indefinitely.
+    public static let radioWaitLimit: TimeInterval = 20
 
     public private(set) var state: BluetoothScanState = .idle
     public private(set) var peripherals: [UUID: DiscoveredPeripheral] = [:]
     public private(set) var autoStopDeadline: Date?
     /// Increments each time a scan actually starts. 0 means no scan has run yet.
     public private(set) var scanNumber = 0
+    public private(set) var diagnostics = BluetoothDiagnostics()
     public var isEnabledInSettings = false
     public var allowDuplicates = false
     /// Seconds after which a scan stops by itself; 0 disables the limit.
@@ -268,6 +362,7 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
     private let central: BluetoothCentral
     private let now: () -> Date
     private var discoveredDuringScan = false
+    private var waitingSince: Date?
 
     public init(central: BluetoothCentral, now: @escaping () -> Date = Date.init) {
         self.central = central
@@ -284,22 +379,36 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
 
     public func start() {
         guard !state.isActive else { return }
+        diagnostics.scanRequestedAt = now()
+        diagnostics.allowDuplicates = allowDuplicates
+        diagnostics.record("Scan requested (permission before asking iOS: \(central.authorization.diagnosticName))", at: now())
         guard isEnabledInSettings else {
-            transition(.blocked(.disabledInSettings))
+            refuse(.disabledInSettings)
             return
         }
         switch central.authorization {
         case .denied:
-            transition(.blocked(.permissionDenied))
+            refuse(.permissionDenied)
             return
         case .restricted:
-            transition(.blocked(.restricted))
+            refuse(.restricted)
             return
         case .notDetermined, .allowed:
             break
         }
+        if diagnostics.managerRequestedAt == nil {
+            diagnostics.managerRequestedAt = now()
+            diagnostics.record("Asked iOS for Bluetooth (central manager created)", at: now())
+        }
         central.activate()
         evaluateRadio(central.radioState, requested: true)
+    }
+
+    /// Stops an active scan because Sentinel left the foreground. iOS does not deliver scan results to a suspended app
+    /// without a Bluetooth background mode, which Sentinel does not have, so a scan cannot continue there.
+    public func appDidEnterBackground() {
+        guard state.isActive else { return }
+        stop(reason: "Scan stopped because Sentinel moved to the background")
     }
 
     public func stop(reason: String = "Scan stopped") {
@@ -309,6 +418,8 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
         }
         if case .scanning = state { central.stopScan() }
         autoStopDeadline = nil
+        waitingSince = nil
+        diagnostics.record(reason, at: now())
         onStateEvent?("\(reason). \(peripherals.count) device(s) listed.", .info)
         transition(.idle)
     }
@@ -323,11 +434,20 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
         if let deadline = autoStopDeadline, now() >= deadline, state.isActive {
             stop(reason: "Scan stopped automatically at the time limit")
         }
+        if case .waitingForRadio = state, let since = waitingSince,
+           now().timeIntervalSince(since) >= BluetoothScanController.radioWaitLimit {
+            halt(.noResponse(lastState: central.radioState, authorization: central.authorization))
+        }
     }
 
     // MARK: BluetoothCentralDelegate
 
     public func centralDidUpdate(radioState: BluetoothRadioState, authorization: BluetoothAuthorization) {
+        diagnostics.stateUpdates += 1
+        diagnostics.lastRadioState = radioState
+        diagnostics.lastAuthorization = authorization
+        diagnostics.lastStateAt = now()
+        diagnostics.record("iOS reported state \(radioState.diagnosticName), permission \(authorization.diagnosticName)", at: now())
         guard state.isActive else { return }
         if authorization == .denied {
             halt(.permissionDenied)
@@ -341,6 +461,9 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
     public func centralDidDiscover(_ advertisement: BluetoothAdvertisement) {
         guard case .scanning = state else { return }
         let time = now()
+        diagnostics.advertisementsThisScan += 1
+        diagnostics.advertisementsTotal += 1
+        diagnostics.lastAdvertisementAt = time
         let reading = (advertisement.rssi == 127 || advertisement.rssi > 20 || advertisement.rssi < -127) ? nil : advertisement.rssi
         var device: DiscoveredPeripheral
         if let existing = peripherals[advertisement.identifier] {
@@ -404,16 +527,21 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
         case .poweredOn:
             if case .scanning = state { return }
             discoveredDuringScan = false
+            waitingSince = nil
             scanNumber += 1
+            diagnostics.advertisementsThisScan = 0
+            diagnostics.allowDuplicates = allowDuplicates
             central.startScan(allowDuplicates: allowDuplicates)
             let started = now()
+            diagnostics.scanStartedAt = started
+            diagnostics.record("Scan started (scan \(scanNumber), duplicates \(allowDuplicates ? "on" : "off"))", at: started)
             autoStopDeadline = autoStopInterval > 0 ? started.addingTimeInterval(autoStopInterval) : nil
             onStateEvent?("Bluetooth LE scan started", .info)
             transition(.scanning(since: started))
         case .unknown:
-            transition(.waitingForRadio)
+            enterWaiting()
         case .resetting:
-            if requested { transition(.waitingForRadio) } else { halt(.resetting) }
+            if requested { enterWaiting() } else { halt(.resetting) }
         case .poweredOff:
             halt(.poweredOff)
         case .unsupported:
@@ -423,9 +551,24 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
         }
     }
 
+    /// A scan that could not be started at all (nothing was running, so nothing is stopped).
+    private func refuse(_ blocker: BluetoothScanBlocker) {
+        diagnostics.lastProblem = "\(blocker.title): \(blocker.guidance)"
+        diagnostics.record("Could not scan: \(blocker.title)", at: now())
+        transition(.blocked(blocker))
+    }
+
+    private func enterWaiting() {
+        if waitingSince == nil { waitingSince = now() }
+        transition(.waitingForRadio)
+    }
+
     private func halt(_ blocker: BluetoothScanBlocker) {
         if case .scanning = state { central.stopScan() }
         autoStopDeadline = nil
+        waitingSince = nil
+        diagnostics.lastProblem = "\(blocker.title): \(blocker.guidance)"
+        diagnostics.record("Could not scan: \(blocker.title)", at: now())
         onStateEvent?("Bluetooth scan could not run: \(blocker.title)", .warning)
         transition(.blocked(blocker))
     }
