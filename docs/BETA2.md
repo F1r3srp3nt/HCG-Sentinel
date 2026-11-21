@@ -155,6 +155,14 @@ See [VALIDATION.md](VALIDATION.md#beta2-010beta2-21-november-2026), filled in fr
 Built by `beta-package.yml`; artifact `hcg-sentinel-unleashed-0.1.0-beta2-deb` (30-day retention) with the Candidate
 handoff `hcg-sentinel-unleashed-0.1.0-beta2-handoff`. The SHA-256 is in VALIDATION.md and in the release proposal.
 
+## Screenshots (Simulator, CI run on `680cb3f`)
+
+iPad Simulator, from the same commit as the package: [dashboard](screenshots/beta2/ipad-dashboard.jpg),
+[Network tools](screenshots/beta2/ipad-tools-network.jpg), [Wi-Fi](screenshots/beta2/ipad-tools-wifi.jpg),
+[Local Network](screenshots/beta2/ipad-tools-local.jpg), [Ping](screenshots/beta2/ipad-tools-ping.jpg). The Ping
+screenshot is a real ICMP run to the Simulator's loopback address: 5 of 5 answered, 0 % loss, 0.11 / 0.20 / 0.42 ms.
+The Simulator has no Bluetooth or Wi-Fi radio; those screens prove layout and wording, not radio behaviour.
+
 ## Release proposal
 
 See [release/0.1.0-beta2.md](release/0.1.0-beta2.md). Nothing is imported until the owner approves.
@@ -172,4 +180,6 @@ See [release/0.1.0-beta2.md](release/0.1.0-beta2.md). Nothing is imported until 
 | L7 | Maker's `postinst` prints nothing on success. Proposal for Maker: after `uicache -p`, check `uicache -l` for the bundle ID and print "Sentinel registered with the Home Screen" or the exact recovery command. |
 | L8 | Simulator tests cover the app's state logic with a fixture radio; they are not evidence of real radio behaviour. |
 | L9 | HCG Connect sign-in cannot be built until HCG registers a client for Sentinel. |
+| L11 | Seen in the Simulator screenshots: the dashboard labels Wi-Fi **Unsupported** when the device is simply not on Wi-Fi (for example wired or cellular); it should say Idle. Display only; fix in the next build. |
+| L12 | Seen in the Simulator: the Wi-Fi screen's "IPv4 / IPv6" and "DNS" rows repeat what iOS's path monitor reports, which in the Simulator is "no IPv4 · no IPv6" even with an IPv4 address assigned. The rows should say the values come from iOS's path report. Display only; fix in the next build. |
 | L10 | The GitHub artifact that holds the .deb expires after 30 days; HCG Repo's import must happen before that, or the workflow is re-run (the output is reproducible). |
