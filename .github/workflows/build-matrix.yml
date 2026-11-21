@@ -153,15 +153,26 @@ jobs:
             CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "deployment target|BUILD (SUCCEEDED|FAILED)" | head -5
 
   maker-route:
-    name: Through HCG Executable Maker (Mobile Build Studio, Xcode with iOS 15.0 minimum)
+    name: Through HCG Executable Maker ${{ matrix.maker.label }} (Xcode with iOS 15.0 minimum)
     # Drives Maker's real New Build → Mobile Build Studio flow headlessly (its tools/ui-driver), the way Maker's own CI
     # does, against THIS revision of Sentinel. The selected Xcode's iPhoneOS SDK minimum is raised to 15.0 first, to
     # mirror a Mac whose Xcode reports "15.0 to 27.2.x". Unsigned: CI holds no signing identity.
+    #
+    # Two Maker revisions: its `main` (labelled 0.3.1) still judges every output with the project's first scheme, so
+    # HCGSentinelModern cannot be chosen there — that row records the problem and is allowed to fail. The fix
+    # (scheme chosen before outputs, Imported copy / Refresh source) is on Maker's branch fix/sentinel-end-to-end,
+    # not yet merged; that row must pass.
     runs-on: macos-26
     timeout-minutes: 60
+    continue-on-error: ${{ matrix.maker.known_broken }}
+    strategy:
+      fail-fast: false
+      matrix:
+        maker:
+          - { label: "main (known scheme bug)", ref: main, key: main, known_broken: true }
+          - { label: "fix/sentinel-end-to-end", ref: fix/sentinel-end-to-end, key: fix, known_broken: false }
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      MAKER_COMMIT: 2842998
       OUT: ${{ github.workspace }}/maker-out
     steps:
       - uses: actions/checkout@v4
@@ -171,15 +182,14 @@ jobs:
         with:
           repository: F1r3srp3nt/HCG-Executable-Maker
           path: maker
-          fetch-depth: 50
+          ref: ${{ matrix.maker.ref }}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
       - name: Maker revision and version
         run: |
-          git -C maker checkout --quiet "$MAKER_COMMIT"
           git -C maker log -1 --format="Maker %h %cd %s"
-          grep -hoE "<Version>[^<]+" maker/Directory.Build.props | head -1 || true
+          grep -rhoE "<Version>[^<]+" maker/Directory.Build.props maker/src/HCG.ExecutableMaker.App/*.csproj 2>/dev/null | head -1 || true
           echo "Sentinel revision under test: $(git -C 'HCG Sentinel' rev-parse HEAD)"
       - name: Raise the iPhoneOS SDK minimum to 15.0 (mirrors an Xcode whose range is 15.0 to 27.x)
         run: |
@@ -208,14 +218,14 @@ jobs:
             echo "== $name (exit $status)"; grep -E "Inspection:|Scheme|Readiness \[|State:|Output |Artifact|FAIL|✗|error" "$OUT/$name.log" | cut -c1-300 | head -40
             return $status; }
           rc=0
-          run modern-sim --mobile-output sim --scheme HCGSentinelModern --signing unsigned || rc=1
+          run modern-sim --mobile-output sim --scheme HCGSentinelModern || rc=1
           run modern-archive --mobile-output archive --scheme HCGSentinelModern --signing unsigned || rc=1
           run legacy-blocked --mobile-output archive --scheme HCGSentinel --signing unsigned --expect-blocked-by "Deployment target" || rc=1
           exit $rc
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: maker-route
+          name: maker-route-${{ matrix.maker.key }}
           path: |
             ${{ github.workspace }}/maker-out/*.log
             ${{ github.workspace }}/maker-out/screens
