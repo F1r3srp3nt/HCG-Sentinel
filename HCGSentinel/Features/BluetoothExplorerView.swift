@@ -33,10 +33,6 @@ struct BluetoothExplorerView: View {
         Screen {
             if isPreview { PreviewBanner(detail: "These three devices are fabricated. No Bluetooth scan is running and none can be started in Preview mode.") }
             controlCard
-            Text("Signal strength is not distance, and unnamed or unknown devices are normal. Details at the end of this screen.")
-                .font(.footnote)
-                .foregroundColor(Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
             filterCard
             AdaptiveStack {
                 SectionLabel(text: listTitle)
@@ -117,10 +113,13 @@ struct BluetoothExplorerView: View {
                     Spacer(minLength: 0)
                     if status.isActive { PulseDot(color: Theme.cyan, active: true) }
                 }
-                Text(status.detail)
-                    .font(.subheadline)
-                    .foregroundColor(Theme.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // Once devices are being heard the title says it all; the space goes to the results on small phones.
+                if status.kind != .scanningWithResults {
+                    Text(status.detail)
+                        .font(.subheadline)
+                        .foregroundColor(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 if let since = scanningSince {
                     Text("Started \(Formatters.time.string(from: since)) · \(deadlineText)")
                         .font(Theme.mono(.caption))
@@ -190,7 +189,7 @@ struct BluetoothExplorerView: View {
                 .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             Label("Not continuity. iOS gives each device an identifier for this app; devices that change their address can appear as new entries.", systemImage: "xmark.circle")
                 .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
-            Explanation("Unnamed or unknown devices are normal and are not a sign of anything malicious. Sentinel does not connect to devices.")
+            Explanation("Unknown devices (no broadcast name) are normal and are not a sign of anything malicious. Sentinel does not connect to devices.")
         }
     }
 
@@ -305,7 +304,9 @@ private struct PeripheralRow: View {
                     Text(device.rssi.map { "Signal \($0) dBm" } ?? "No signal reading")
                         .font(Theme.mono(.subheadline))
                         .foregroundColor(Theme.textPrimary)
+                        .fixedSize()
                 }
+                .layoutPriority(1)
             }
             AdaptiveStack(spacing: 6) {
                 StatusPill(text: device.lastScan == currentScan ? "This scan" : "Earlier scan",
