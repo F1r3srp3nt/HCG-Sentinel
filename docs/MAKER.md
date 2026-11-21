@@ -163,13 +163,17 @@ Maker builds a **copy** of the folder or ZIP taken at import, not the folder its
 “Imported copy” whether that copy still matches the original (and the original's Git commit); **Refresh source**
 copies it again without losing the project or the scheme choice. **Copy diagnostic report** (or
 `HCGExecutableMaker --diagnose-mobile`) lists SHA-256 hashes of the files that decide schemes and deployment targets.
-They have been the same from 03bc6e5 through 490858c (`main` when this was written; later commits that do not touch the Xcode project or schemes keep them):
+The beta revision (header, brand font, Bluetooth fixture) adds files to the project, so `project.pbxproj` changed;
+the two schemes did not. Later commits that do not touch the Xcode project or schemes keep these values:
 
-| File | SHA-256 at 03bc6e5 … 490858c (`main`) | at 810c6f9 (older) |
-| --- | --- | --- |
-| `HCGSentinel.xcodeproj/project.pbxproj` | `8a5c6cfbcd930074f61284538a64fd191bb31f2d3d665b05c5c66f73afe9e0b0` | `38d95aa724b0fad6f99806ff5ccf70d260af0f03433162a9b94ce0b0850b2545` |
-| `…/xcschemes/HCGSentinel.xcscheme` | `3cdf71c801f54e86d68b905672bcddf8d70cbf1ab597f00cc66b1ca08ad254a1` | same |
-| `…/xcschemes/HCGSentinelModern.xcscheme` | `1e95a1302043a8b80d5a092accd4f5286829a10809fe55aeeee385a8fe1f7b5a` | `bc3e14ca0cfdcf0f2609f053a33dcc7f9e604f2e1fabf070b26a4888d8f5af89` |
+| File | SHA-256 from the HCG header and Bluetooth beta on | 03bc6e5 … 490858c | 810c6f9 (older) |
+| --- | --- | --- | --- |
+| `HCGSentinel.xcodeproj/project.pbxproj` | `6616c5aecf787c2126b2a0d1c6acd68f2f253bfac11451a413d00a14316796d7` | `8a5c6cfbcd930074f61284538a64fd191bb31f2d3d665b05c5c66f73afe9e0b0` | `38d95aa724b0fad6f99806ff5ccf70d260af0f03433162a9b94ce0b0850b2545` |
+| `…/xcschemes/HCGSentinel.xcscheme` | `3cdf71c801f54e86d68b905672bcddf8d70cbf1ab597f00cc66b1ca08ad254a1` | same | same |
+| `…/xcschemes/HCGSentinelModern.xcscheme` | `1e95a1302043a8b80d5a092accd4f5286829a10809fe55aeeee385a8fe1f7b5a` | same | `bc3e14ca0cfdcf0f2609f053a33dcc7f9e604f2e1fabf070b26a4888d8f5af89` |
+
+A copy whose `project.pbxproj` still shows `8a5c6cfb…` was imported before the beta: it builds, but without the HCG
+header, the brand font and the new Bluetooth screen. Press **Refresh source**.
 
 A ZIP downloaded from GitHub produces the same files, so the same hashes apply. Any other value means the copy is from
 another revision: refresh it from an up-to-date folder or ZIP.

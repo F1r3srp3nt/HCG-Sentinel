@@ -11,10 +11,20 @@ site's recorded answers of 16 November), HCG Executable Maker (`docs/hcg-connect
 | Does Sentinel have a registered HCG Connect client? | **No.** No client ID, registration, redirect URI or sign-in code exists in this repository, and the main site's records list none for Sentinel. |
 | Does Sentinel have a product ID? | **No.** The main site lists `hcg-sentinel` as "not registered, D3: to register". HCG Store's catalogue keeps Sentinel unmapped (`registry.centralId: null`, edition `app` without a central key). |
 | Is there an entitlement contract for Sentinel? | **No.** There are no Sentinel feature keys, licences or `/check` rules. The general contract exists (Ecosystem API `/me`, `POST /check`), but nothing in it names Sentinel. |
-| Can the documented flow be verified for Sentinel today? | **No, there is nothing to verify end to end** without a client. What can be checked without an account is HCG Connect's own configuration (issuer, keys, refusal of unknown clients, `/me` needing a token). This session's network does not reach HCG, so those checks run in GitHub Actions: **Actions › HCG Connect readiness (manual) › Run workflow** (`.github/workflows/connect-readiness.yml`, read-only, no credentials). Results are recorded in VALIDATION.md. |
+| Can the documented flow be verified for Sentinel today? | **No, there is nothing to verify end to end** without a client. What can be checked without an account is HCG Connect's own configuration (issuer, keys, refusal of unknown clients, `/me` needing a token). This session's network does not reach HCG, so those checks run in GitHub Actions: **Actions › HCG Connect readiness (manual) › Run workflow** (`.github/workflows/connect-readiness.yml`, read-only, no credentials). Run 44859350703 on 21 November 2026: results below. |
 | Does Sentinel need an account to work? | **No, and it must stay that way.** Every current feature (Check My Network, Bluetooth Explorer, capture inspection, Security Lab, Request Composer, Radio Lab, helper link) runs locally with no sign-in. An account would only ever add things that need HCG: syncing reports or running Security Lab on a paired HCG Server. |
 
-## What exists centrally (from the main site's recorded answers, not re-verified here)
+## Checked from GitHub Actions, 21 November 2026 (run 44859350703, no account)
+
+| Check | Result |
+| --- | --- |
+| Discovery document | issuer `https://qggdyzoydveafkmjgkpq.supabase.co/auth/v1`; authorize, token, userinfo and `jwks.json` endpoints as below; grants `authorization_code`, `refresh_token`; `revocation_endpoint` and `end_session_endpoint` absent. Matches the main site's answers. |
+| PKCE methods offered | `S256` and `plain`. The server also accepts `plain`, so Sentinel must always send S256 and never fall back. |
+| Signing keys | One EC key, `ES256`. Sentinel's ID-token check must accept ES256 (not only RS256). |
+| Authorize with an unregistered client and Sentinel's planned redirect | `HTTP 400 {"error_code":"oauth_client_not_found","msg":"invalid client_id"}`. Unknown clients are refused before any redirect is used. This confirms Sentinel has no client, as expected. |
+| `GET /me` on the Ecosystem API without a token | `HTTP 401`. Account data needs a token. |
+
+## What exists centrally (from the main site's recorded answers, not re-verified beyond the checks above)
 
 | Item | Value |
 | --- | --- |
