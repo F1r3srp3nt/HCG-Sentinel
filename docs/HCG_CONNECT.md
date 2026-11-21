@@ -4,6 +4,11 @@ Reviewed 21 November 2026 against this repository, HCG Store (`web-hcg-store/doc
 site's recorded answers of 16 November), HCG Executable Maker (`docs/hcg-connect/`) and HCG Server
 (`internal/hcgconnect`).
 
+Rechecked for 0.1.0~beta2 (21 November 2026): unchanged. There is still no Sentinel client, product ID, callback URI or
+entitlement contract, so there is no existing registration to reuse. The HCG--Connect repository is a messaging
+project containing only a README, not the identity service. Beta2 shows Settings › HCG account as "Not signed in · not
+available yet" and adds no sign-in code.
+
 ## Answer in one table
 
 | Question | Finding |
