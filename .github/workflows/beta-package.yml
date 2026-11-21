@@ -1,0 +1,231 @@
+name: Beta package (rootless, manual publication)
+
+# Builds the next HCG Repo Candidate beta of HCG Sentinel Unleashed with HCG Executable Maker's Unleashify packager —
+# the same route as 0.1.0~beta1 — and validates it. It never imports, uploads or publishes anything: the result is a
+# .deb, its checksum, and a Candidate handoff that HCG Repo will not import until the owner records an approval.
+on:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - ".github/workflows/beta-package.yml"
+      - "packaging/**"
+      - "HCGSentinel/**"
+      - "SentinelCore/Sources/**"
+      - "HCGSentinel.xcodeproj/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta-package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PKG: com.hakmicapitalgroup.hcgsentinel
+  PKG_VERSION: 0.1.0~beta2
+  PKG_NAME: HCG Sentinel Unleashed
+  DESCRIPTION: "Toolkit for authorised testing of your own devices, networks and services: Bluetooth LE discovery, Wi-Fi and local network diagnostics, ping. Candidate beta, packaged for rootless jailbreaks."
+  DEB_ARTIFACT: hcg-sentinel-unleashed-0.1.0-beta2-deb
+  # HCG Executable Maker feature/unleashify, the commit after the one that built 0.1.0~beta1 (73edc9d): it only adds the
+  # recorded beta1 approval and CI changes, so packaging and validation are the same code that produced beta1.
+  MAKER_COMMIT: c074245aed5ff3208721d55dc4a7fe2013b4b193
+  # The published 0.1.0~beta1 (HCG Repo pool), for upgrade and rollback checks.
+  BETA1_SHA256: f1111fef7ab0b5da000c6134905b29f571597b98938b6ce09e11f75643e73846
+  BETA1_PATH: pool/iphoneos-arm64/com.hakmicapitalgroup.hcgsentinel_0.1.0~beta1_iphoneos-arm64.deb
+
+jobs:
+  package:
+    name: Build HCGSentinelModern (Release, arm64) → Unleashify rootless .deb → validate → HCG Repo dry run
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      OUT: ${{ github.workspace }}/out
+      SRC_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: sentinel
+      - uses: actions/checkout@v4
+        with:
+          repository: F1r3srp3nt/HCG-Executable-Maker
+          ref: ${{ env.MAKER_COMMIT }}
+          path: maker
+      - uses: actions/checkout@v4
+        with:
+          repository: F1r3srp3nt/HCG-repo
+          path: hcg-repo
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tools (ldid for pseudo-signing, dpkg for inspection)
+        run: |
+          brew install ldid dpkg
+          xcodebuild -version
+          echo "Maker: $(git -C maker log -1 --format='%h %s')"
+          echo "HCG Repo: $(git -C hcg-repo log -1 --format='%h %s')"
+          echo "HCG_REPO_COMMIT=$(git -C hcg-repo rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: beta1 from HCG Repo's pool (byte check)
+        run: |
+          test "$(shasum -a 256 < "hcg-repo/$BETA1_PATH" | cut -d' ' -f1)" = "$BETA1_SHA256"
+          mkdir -p "$OUT"; cp "hcg-repo/$BETA1_PATH" "$OUT/beta1.deb"
+      - name: Release archive for a generic iOS device (unsigned; ldid signs in packaging)
+        run: |
+          xcodebuild -project sentinel/HCGSentinel.xcodeproj -scheme HCGSentinelModern -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$OUT/HCGSentinelModern.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO COMPILER_INDEX_STORE_ENABLE=NO archive -quiet
+          app="$OUT/HCGSentinelModern.xcarchive/Products/Applications/HCGSentinelModern.app"
+          lipo -archs "$app/HCGSentinelModern"
+          vtool -show-build "$app/HCGSentinelModern" | grep -E "platform|minos"
+      - name: Build Maker
+        run: dotnet build maker/src/HCG.ExecutableMaker.App -c Release -nologo -v q
+      - name: Unleashify — rootless .deb and Candidate handoff (no owner approval recorded, so not importable)
+        run: |
+          stamp="$(git -C sentinel log -1 --format=%cI)"
+          dotnet maker/src/HCG.ExecutableMaker.App/bin/Release/net10.0/HCGExecutableMaker.dll \
+            --rootless-deb "$OUT/HCGSentinelModern.xcarchive" --ldid "$(command -v ldid)" \
+            --package "$PKG" --package-version "$PKG_VERSION" --name "$PKG_NAME" --description "$DESCRIPTION" \
+            --device-ios 16.5 --published "0.1.0~beta1=$BETA1_SHA256" \
+            --repository "${{ github.repository }}" --commit "$SRC_COMMIT" \
+            --ci-run "${{ github.run_id }}" --ci-artifact "$DEB_ARTIFACT" \
+            --ci-run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --ci-repository "${{ github.repository }}" --ci-commit "$SRC_COMMIT" \
+            --built-with "Xcode 26.6, scheme HCGSentinelModern, Release, CODE_SIGNING_ALLOWED=NO; ldid via Unleashify" \
+            --production-access undecided --device-target "Dopamine (rootless) iPhone, iOS 15.0 or later; owner's test phone" \
+            --change "Public name HCG Sentinel Unleashed (Home Screen name stays Sentinel; package ID and bundle ID unchanged)." \
+            --change "Bluetooth: scanning can be turned on from the Bluetooth screen; a scan iOS never answers ends with the real state after 20 s; continuous signal updates on by default; diagnostics card." \
+            --change "Wi-Fi: current connection (interface, IPv4 and subnet, IPv6, gateway, connection changes). Nearby networks are reported as unsupported, never invented." \
+            --change "Local Network: Bonjour browsing; sweep of a private range you confirm you are authorised to test (at most 254 addresses)." \
+            --change "Ping: real ICMP Echo, or a TCP connect test that is labelled as such; statistics and session history." \
+            --known-issue "Not yet device-tested. Bluetooth, Wi-Fi, Bonjour, sweep and ICMP need a physical iPhone." \
+            --known-issue "Nearby Wi-Fi networks and the SSID are not available: iOS does not provide them to this build (no entitlement, no privileged helper)." \
+            --known-issue "HCG Connect sign-in is not included: Sentinel has no registered HCG Connect client yet." \
+            --timestamp "$stamp" --out "$OUT/deb" | tee "$OUT/unleashify.log"
+          H="$(ls -d "$OUT"/deb/*-candidate-handoff)"; echo "HANDOFF=$H" >> "$GITHUB_ENV"
+          deb="$(ls "$H"/*.deb)"; echo "DEB=$deb" >> "$GITHUB_ENV"
+          ls -la "$H"
+      - name: Validate for iOS 16.5 and 17.4 (Maker's rootless validator, upgrade over the published beta1)
+        run: |
+          for ios in 16.5 17.4; do
+            dotnet maker/src/HCG.ExecutableMaker.App/bin/Release/net10.0/HCGExecutableMaker.dll --rootless-deb-validate "$DEB" \
+              --package "$PKG" --package-version "$PKG_VERSION" --bundle-id com.hcg.sentinel --device-ios "$ios" \
+              --published "0.1.0~beta1=$BETA1_SHA256" | tee "$OUT/validate-$ios.txt"
+          done
+      - name: Package facts, and what changed from beta1 (identifiers, entitlements, scripts, dependencies)
+        run: |
+          set -e
+          x="$OUT/x2"; b="$OUT/x1"; mkdir -p "$x" "$b"
+          dpkg-deb -x "$DEB" "$x"; dpkg-deb -e "$DEB" "$x/DEBIAN"
+          dpkg-deb -x "$OUT/beta1.deb" "$b"; dpkg-deb -e "$OUT/beta1.deb" "$b/DEBIAN"
+          app="$x/var/jb/Applications/HCGSentinelModern.app"; old="$b/var/jb/Applications/HCGSentinelModern.app"
+          {
+            echo "== control"; cat "$x/DEBIAN/control"
+            echo "== contents"; dpkg-deb -c "$DEB" | awk '{print $6}' | head -40
+            echo "== binary"; lipo -archs "$app/HCGSentinelModern"; vtool -show-build "$app/HCGSentinelModern" | grep -E "platform|minos"
+            for k in CFBundleIdentifier CFBundleDisplayName CFBundleShortVersionString CFBundleVersion MinimumOSVersion; do
+              echo "$k: $(plutil -extract $k raw "$app/Info.plist")  (beta1: $(plutil -extract $k raw "$old/Info.plist"))"
+            done
+            echo "NSBonjourServices: $(plutil -extract NSBonjourServices json -o - "$app/Info.plist" | tr -d '\n' | cut -c1-200)"
+            echo "== entitlements (ldid -e), beta2 then beta1"
+            ldid -e "$app/HCGSentinelModern" || true; echo "--"; ldid -e "$old/HCGSentinelModern" || true
+            echo "== maintainer scripts identical to beta1?"
+            for s in postinst postrm; do cmp "$x/DEBIAN/$s" "$b/DEBIAN/$s" && echo "$s: identical" || { echo "$s: DIFFERENT"; diff "$b/DEBIAN/$s" "$x/DEBIAN/$s" || true; }; done
+            echo "== depends: $(grep '^Depends' "$x/DEBIAN/control")  (beta1: $(grep '^Depends' "$b/DEBIAN/control"))"
+          } | tee "$OUT/facts.txt"
+          # Identifiers that must not change.
+          grep -qx "Package: $PKG" "$x/DEBIAN/control"
+          grep -qx "Version: $PKG_VERSION" "$x/DEBIAN/control"
+          grep -qx "Architecture: iphoneos-arm64" "$x/DEBIAN/control"
+          test "$(plutil -extract CFBundleIdentifier raw "$app/Info.plist")" = com.hcg.sentinel
+          test "$(plutil -extract CFBundleDisplayName raw "$app/Info.plist")" = Sentinel
+          test "$(plutil -extract CFBundleVersion raw "$app/Info.plist")" = 2
+          # No entitlement may appear silently: the same (none) as beta1.
+          test "$(ldid -e "$app/HCGSentinelModern" 2>/dev/null)" = "$(ldid -e "$old/HCGSentinelModern" 2>/dev/null)"
+          # Everything installs under /var/jb, at the same path as beta1.
+          [ -z "$(dpkg-deb -c "$DEB" | awk '{print $6}' | grep -v '^\./var/jb/' | grep -v '^\./$' | grep -v '^\./var/$')" ]
+          sha="$(shasum -a 256 < "$DEB" | cut -d' ' -f1)"; size="$(stat -f%z "$DEB")"
+          echo "$sha  $(basename "$DEB")  $size bytes" | tee "$OUT/SHA256.txt"
+          grep -q "^$sha  $(basename "$DEB")$" "$HANDOFF/SHA256SUMS"
+          grep -q "^sha256 = \"$sha\"$" "$HANDOFF/import-request.toml"
+      - name: HCG Repo — inspect, and importer dry run (nothing is written to HCG Repo)
+        run: |
+          (cd hcg-repo && bin/hcgrepo inspect "$DEB") | tee "$OUT/hcgrepo-inspect.txt"
+          grep -q "^OK: package passes package-level validation" "$OUT/hcgrepo-inspect.txt"
+          PYTHONPATH=hcg-repo/tools python3 maker/tools/unleashify/hcgrepo-dry-run.py --repo hcg-repo --handoff "$HANDOFF" \
+            --hypothetical-approval --report "$OUT/hcgrepo-dry-run.json" | tee "$OUT/hcgrepo-dry-run.txt"
+          grep -q "^RESULT       BYTES VALIDATED, NOT YET IMPORTABLE" "$OUT/hcgrepo-dry-run.txt"
+          git -C hcg-repo status --porcelain | tee "$OUT/hcg-repo-status.txt"; [ ! -s "$OUT/hcg-repo-status.txt" ]
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### $PKG_NAME $PKG_VERSION (rootless, iphoneos-arm64)"
+            echo "- SHA-256: \`$(cut -d' ' -f1 "$OUT/SHA256.txt" 2>/dev/null)\` ($(cut -d' ' -f4 "$OUT/SHA256.txt" 2>/dev/null) bytes)"
+            echo "- Source: ${{ github.repository }}@$SRC_COMMIT · Maker \`${MAKER_COMMIT:0:7}\` · HCG Repo \`${HCG_REPO_COMMIT:0:7}\`"
+            grep -E "Validation:" "$OUT"/validate-*.txt 2>/dev/null | sed 's/^/- /'
+            grep -E "^RESULT" "$OUT/hcgrepo-dry-run.txt" 2>/dev/null | sed 's/^/- /'
+            echo "- Publication: **not done**. HCG Repo will not import it until the owner records an approval for $PKG_VERSION."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DEB_ARTIFACT }}
+          path: ${{ env.DEB }}
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hcg-sentinel-unleashed-0.1.0-beta2-handoff
+          path: |
+            ${{ env.HANDOFF }}
+            ${{ github.workspace }}/out/*.txt
+            ${{ github.workspace }}/out/*.json
+            ${{ github.workspace }}/out/*.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  dpkg-roundtrip:
+    name: dpkg sandbox — beta1 → beta2 upgrade, rollback to beta1, removal (Linux dpkg; not a device test)
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: F1r3srp3nt/HCG-repo
+          path: hcg-repo
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.DEB_ARTIFACT }}
+          path: downloaded
+      - name: Install beta1, upgrade to beta2, roll back to beta1, remove, purge
+        run: |
+          set -e
+          beta1="$PWD/hcg-repo/$BETA1_PATH"; beta2="$(ls "$PWD"/downloaded/*.deb)"
+          test "$(sha256sum "$beta1" | cut -d' ' -f1)" = "$BETA1_SHA256"
+          echo "beta2 sha256: $(sha256sum "$beta2" | cut -d' ' -f1)"
+          R="$PWD/dpkg"; mkdir -p "$R/root" "$R/admin/updates" "$R/admin/info" "$R/bin"; touch "$R/admin/status" "$R/admin/available"
+          printf '#!/bin/sh\necho "uicache $*" >> "%s/uicache.log"\n' "$R" > "$R/bin/uicache"; chmod +x "$R/bin/uicache"
+          D="dpkg --root=/ --instdir=$R/root --admindir=$R/admin --force-script-chrootless --force-architecture --force-depends --force-not-root"
+          v() { PATH="$R/bin:$PATH" $D -s "$PKG" | grep -E "^Version" ; }
+          step() { echo "--- $1" >> "$R/uicache.log"; }
+          step "install beta1";  PATH="$R/bin:$PATH" $D -i "$beta1";  v
+          step "upgrade to beta2"; PATH="$R/bin:$PATH" $D -i "$beta2"; v | grep -qx "Version: $PKG_VERSION"
+          find "$R/root" -type f | sed "s|$R/root||" | sort > "$R/after-upgrade.txt"
+          grep -qx "/var/jb/Applications/HCGSentinelModern.app/HCGSentinelModern" "$R/after-upgrade.txt"
+          [ -z "$(grep -v '^/var/jb/' "$R/after-upgrade.txt")" ]
+          step "rollback to beta1"; PATH="$R/bin:$PATH" $D -i "$beta1"; v | grep -qx "Version: 0.1.0~beta1"
+          step "upgrade to beta2 again"; PATH="$R/bin:$PATH" $D -i "$beta2"; v | grep -qx "Version: $PKG_VERSION"
+          step "remove"; PATH="$R/bin:$PATH" $D -r "$PKG"
+          left="$(find "$R/root" -type f | wc -l | tr -d ' ')"; echo "files left after removal: $left"; [ "$left" = 0 ]
+          step "purge"; PATH="$R/bin:$PATH" $D -P "$PKG"
+          cat "$R/uicache.log"
+          {
+            echo "### dpkg sandbox (Linux dpkg, the uploaded artifact's bytes)"
+            echo "- beta1 → beta2 upgrade, rollback to beta1, upgrade again, remove (0 files left), purge: all succeeded"
+            echo "- uicache calls, per step:"; sed 's/^/  - /' "$R/uicache.log"
+          } >> "$GITHUB_STEP_SUMMARY"
