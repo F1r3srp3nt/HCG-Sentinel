@@ -220,7 +220,8 @@ jobs:
           rc=0
           run modern-sim --mobile-output sim --scheme HCGSentinelModern || rc=1
           run modern-archive --mobile-output archive --scheme HCGSentinelModern --signing unsigned || rc=1
-          run legacy-blocked --mobile-output archive --scheme HCGSentinel --signing unsigned --expect-blocked-by "Deployment target" || rc=1
+          # No --signing: Maker does not let a blocked output be selected, so it offers no signing choice for it.
+          run legacy-blocked --mobile-output archive --scheme HCGSentinel --expect-blocked-by "Deployment target" || rc=1
           exit $rc
       - uses: actions/upload-artifact@v4
         if: always()

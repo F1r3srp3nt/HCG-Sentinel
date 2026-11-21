@@ -11,9 +11,10 @@ own results here", with the phone model, its iOS version and the commit.
 | iOS 15.0 or later (for example an iPhone 13 Pro Max on 17.4) | `HCGSentinelModern` |
 | iOS 14.7 (the iPhone X) | `HCGSentinel`, only with an Xcode that still accepts 14.7 (16.4 or 26.x) |
 
-In Maker: Mobile Build Studio › check that **Imported copy** matches this revision (hashes in
-[MAKER.md](MAKER.md#is-maker-building-this-revision), or press **Refresh source**) › scheme › signing **Automatic**
-with your Team ID › output **IPA**, export method **development**.
+In Maker (built from its branch `fix/sentinel-end-to-end`; Maker's `main` cannot select `HCGSentinelModern`, see
+[MAKER.md](MAKER.md#which-maker-can-build-hcgsentinelmodern-check-this-first)): Mobile Build Studio › if it shows
+**HCG'S COPY IS NOT THE CURRENT SOURCE**, press **Refresh from source…** › scheme › output **IPA** › signing
+**Automatic** with your Team ID › export method **development**.
 
 Without Maker, on the Mac:
 
