@@ -193,8 +193,12 @@ jobs:
           shot fixture-bluetooth-results 12 -SentinelSection bluetooth -SentinelBluetoothFixture results
           shot fixture-bluetooth-detail 14 -SentinelSection bluetooth -SentinelBluetoothFixture results -SentinelOpenFirstDevice YES
           shot static-motion-dashboard 8 -SentinelSection dashboard -SentinelStaticMotion YES
+          shot tools-network 8 -SentinelSection network
+          shot tools-wifi 8 -SentinelSection network -SentinelNetworkTool wifi
+          shot tools-local 8 -SentinelSection network -SentinelNetworkTool local
+          shot tools-ping 14 -SentinelSection network -SentinelNetworkTool ping -SentinelRunPing YES
           xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
-          for file in screenshots/fixture-*.png screenshots/static-*.png; do sips -Z 1400 "$file" >/dev/null; done
+          for file in screenshots/fixture-*.png screenshots/static-*.png screenshots/tools-*.png; do sips -Z 1400 "$file" >/dev/null; done
       - name: Record the dashboard header (animation preview)
         timeout-minutes: 5
         run: |

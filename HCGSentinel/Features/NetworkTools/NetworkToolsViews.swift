@@ -12,22 +12,37 @@ struct NetworkToolsCard: View {
     @EnvironmentObject private var connection: ConnectionMonitor
     @EnvironmentObject private var ping: PingModel
     @EnvironmentObject private var local: LocalNetworkModel
+    @State private var open: String?
 
     var body: some View {
         SentinelCard {
             SectionLabel(text: "Network tools")
-            NavigationLink(destination: WiFiView()) {
+            NavigationLink(destination: WiFiView(), tag: "wifi", selection: $open) {
                 ToolRow(icon: "wifi", title: "Wi-Fi", detail: wifiDetail, status: nil)
             }
-            NavigationLink(destination: LocalNetworkView()) {
+            NavigationLink(destination: LocalNetworkView(), tag: "local", selection: $open) {
                 ToolRow(icon: "network", title: "Local Network", detail: "Bonjour services and an authorised sweep of your own network", status: local.status)
             }
-            NavigationLink(destination: PingView()) {
+            NavigationLink(destination: PingView(), tag: "ping", selection: $open) {
                 ToolRow(icon: "waveform.path.ecg", title: "Ping", detail: "ICMP echo, or a labelled TCP connect test", status: ping.status)
             }
             NavigationLink(destination: NetworkCheckView()) {
                 ToolRow(icon: "checkmark.shield", title: "Check My Network", detail: "DNS, captive portal, proxy and HTTPS checks", status: nil)
             }
+        }
+        .onAppear {
+            #if DEBUG
+            // Screenshot checks in CI: -SentinelNetworkTool <wifi|local|ping> opens that tool; with -SentinelRunPing a real
+            // 5-probe ICMP test to 127.0.0.1 runs (the Simulator's own loopback), so the screenshot shows real results.
+            if open == nil, let tool = UserDefaults.standard.string(forKey: "SentinelNetworkTool") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { open = tool }
+                if tool == "ping", ProcessInfo.processInfo.arguments.contains("-SentinelRunPing"), !ping.isRunning, ping.current == nil {
+                    ping.input = "127.0.0.1"
+                    ping.count = 5
+                    ping.start()
+                }
+            }
+            #endif
         }
     }
 
