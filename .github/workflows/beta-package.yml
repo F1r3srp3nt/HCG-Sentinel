@@ -155,10 +155,32 @@ jobs:
         run: |
           (cd hcg-repo && bin/hcgrepo inspect "$DEB") | tee "$OUT/hcgrepo-inspect.txt"
           grep -q "^OK: package passes package-level validation" "$OUT/hcgrepo-inspect.txt"
+          # 1. As exported, against HCG Repo as it is: the importer must validate the bytes; Candidate must not serve them
+          #    (no owner approval for this version exists).
           PYTHONPATH=hcg-repo/tools python3 maker/tools/unleashify/hcgrepo-dry-run.py --repo hcg-repo --handoff "$HANDOFF" \
-            --hypothetical-approval --report "$OUT/hcgrepo-dry-run.json" | tee "$OUT/hcgrepo-dry-run.txt"
-          grep -q "^RESULT       BYTES VALIDATED, NOT YET IMPORTABLE" "$OUT/hcgrepo-dry-run.txt"
+            --report "$OUT/hcgrepo-dry-run.json" | tee "$OUT/hcgrepo-dry-run.txt" || true
+          grep -q "^importer .* → validated$" "$OUT/hcgrepo-dry-run.txt"
+          grep -q "not offered in Candidate, until the owner's approval is recorded" "$OUT/hcgrepo-dry-run.txt"
           git -C hcg-repo status --porcelain | tee "$OUT/hcg-repo-status.txt"; [ ! -s "$OUT/hcg-repo-status.txt" ]
+          # 2. In a throwaway copy only: beta1's recorded approval is kept and beta2 is added to exception_versions with a
+          #    label saying it is hypothetical. (Maker's --hypothetical-approval replaces the exception lines, which drops
+          #    beta1's approval and makes the already-public beta1 look protected; that is a limit of the script for a
+          #    package's second version, not a property of this package.) HCG Repo's full checks must then accept it.
+          cp -R hcg-repo "$OUT/hypothetical-repo"; rm -rf "$OUT/hypothetical-repo/.git"
+          python3 - "$OUT/hypothetical-repo/packages/$PKG/package.toml" "$PKG_VERSION" <<'EOF'
+          import re, sys
+          path, version = sys.argv[1], sys.argv[2]
+          text = open(path, encoding="utf-8").read()
+          m = re.search(r'^exception_versions = \[(.*)\]$', text, re.M)
+          assert m, "package.toml has no exception_versions"
+          text = text[:m.start()] + f'exception_versions = [{m.group(1)}, "{version}"]' + text[m.end():]
+          text = text.replace('exception = "', 'exception = "HYPOTHETICAL FOR A DRY RUN ONLY (not an owner approval) for ' + version + '; ', 1)
+          open(path, "w", encoding="utf-8").write(text)
+          print(re.search(r'^exception_versions = .*$', text, re.M).group(0))
+          EOF
+          PYTHONPATH="$OUT/hypothetical-repo/tools" python3 maker/tools/unleashify/hcgrepo-dry-run.py --repo "$OUT/hypothetical-repo" \
+            --handoff "$HANDOFF" --report "$OUT/hcgrepo-dry-run-hypothetical.json" | tee "$OUT/hcgrepo-dry-run-hypothetical.txt"
+          grep -q "^RESULT       VALIDATED:" "$OUT/hcgrepo-dry-run-hypothetical.txt"
       - name: Summary
         if: always()
         run: |
@@ -167,7 +189,8 @@ jobs:
             echo "- SHA-256: \`$(cut -d' ' -f1 "$OUT/SHA256.txt" 2>/dev/null)\` ($(cut -d' ' -f4 "$OUT/SHA256.txt" 2>/dev/null) bytes)"
             echo "- Source: ${{ github.repository }}@$SRC_COMMIT · Maker \`${MAKER_COMMIT:0:7}\` · HCG Repo \`${HCG_REPO_COMMIT:0:7}\`"
             grep -E "Validation:" "$OUT"/validate-*.txt 2>/dev/null | sed 's/^/- /'
-            grep -E "^RESULT" "$OUT/hcgrepo-dry-run.txt" 2>/dev/null | sed 's/^/- /'
+            grep -E "^importer" "$OUT/hcgrepo-dry-run.txt" 2>/dev/null | sed 's/^/- as exported: /'
+            grep -E "^RESULT" "$OUT/hcgrepo-dry-run-hypothetical.txt" 2>/dev/null | sed 's/^/- with beta1’s approval kept and a hypothetical one for beta2 (throwaway copy): /'
             echo "- Publication: **not done**. HCG Repo will not import it until the owner records an approval for $PKG_VERSION."
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

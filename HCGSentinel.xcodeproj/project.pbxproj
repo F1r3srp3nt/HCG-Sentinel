@@ -225,6 +225,14 @@
 			isa = PBXBuildFile;
 			fileRef = 66AAFFB25DA43A78489F0970;
 		};
+		93B0D9515D5E05ED8C2B2138 = {
+			isa = PBXBuildFile;
+			fileRef = 86187919484875D492495DA1;
+		};
+		93F35BF8A81E819F2DA9A989 = {
+			isa = PBXBuildFile;
+			fileRef = 86187919484875D492495DA1;
+		};
 		B0497617C77CB7B2FA40EEF3 = {
 			isa = PBXBuildFile;
 			productRef = B1759CFEBF67FABEFEB2EC05;
@@ -489,6 +497,12 @@
 			isa = PBXFileReference;
 			lastKnownFileType = net.daringfireball.markdown;
 			path = README.md;
+			sourceTree = "<group>";
+		};
+		86187919484875D492495DA1 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = NetworkToolsAppTests.swift;
 			sourceTree = "<group>";
 		};
 		8953467BB375D3F422963209 = {
@@ -829,6 +843,7 @@
 				66AAFFB25DA43A78489F0970,
 				4751A22D65F1D1961EC45604,
 				CD42F08BBEBE850DF40BF21E,
+				86187919484875D492495DA1,
 				C2422B703FDCCE97662D43A2,
 			);
 			path = HCGSentinelTests;
@@ -983,6 +998,7 @@
 				15DAD64F96108B0647C115D2,
 				25473607A8F41989361A9211,
 				35E0E047E8A422E04637F4A9,
+				93F35BF8A81E819F2DA9A989,
 				7D4F6258591AEEAFADF1C9C6,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -1034,6 +1050,7 @@
 				9310F37420B6969770ED263C,
 				F02E98F076DCF261EB8F25F7,
 				7B8B027BDD33649C3F52BD01,
+				93B0D9515D5E05ED8C2B2138,
 				F3F7C896614BEC81FA85F020,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -1,89 +1,41 @@
-# iPhone beta checklist
+# Physical-device checklist: HCG Sentinel Unleashed 0.1.0~beta2
 
-A short manual pass for a development build on your own iPhone. Distribution stays manual: nothing here uploads to
-TestFlight or the App Store. Write each result (pass, fail, or not tried) in `docs/VALIDATION.md` under "Record your
-own results here", with the phone model, its iOS version and the commit.
+For the owner's Dopamine-jailbroken iPhone (rootless). Nothing here is done automatically: no respring, no install, no
+upload. Record each step as **pass**, **fail** (with what you saw) or **not tried**, plus the phone model, iOS version,
+Dopamine version and package manager, in `docs/VALIDATION.md` under "Record your own results here". Only results
+recorded there count as device evidence.
 
-## 0. Build and install
+Commands below are typed over SSH or in a terminal app on the phone (`sudo` needs your mobile password).
 
-| Phone | Scheme |
-| --- | --- |
-| iOS 15.0 or later (for example an iPhone 13 Pro Max on 17.4) | `HCGSentinelModern` |
-| iOS 14.7 (the iPhone X) | `HCGSentinel`, only with an Xcode that still accepts 14.7 (16.4 or 26.x) |
+**Before you start**
+- Know a Bluetooth LE device that is advertising (a fitness tracker, a smart bulb, a second phone running a BLE
+  advertiser app). Headphones and watches already connected to this iPhone do **not** appear: iOS hides them.
+- Know the IP address of one device on your Wi-Fi that answers ping (usually your router: Wi-Fi screen › Default
+  gateway).
 
-In Maker (built from its branch `fix/sentinel-end-to-end`; Maker's `main` cannot select `HCGSentinelModern`, see
-[MAKER.md](MAKER.md#which-maker-can-build-hcgsentinelmodern-check-this-first)): Mobile Build Studio › if it shows
-**HCG'S COPY IS NOT THE CURRENT SOURCE**, press **Refresh from source…** › scheme › output **IPA** › signing
-**Automatic** with your Team ID › export method **development**.
+| # | Test | Steps | Expected |
+| --- | --- | --- | --- |
+| 1 | **Installation and launch** | `uicache -l \| grep com.hcg.sentinel` (note the output). In Sileo or Zebra: refresh HCG Repo Candidate, install **HCG Sentinel Unleashed** 0.1.0~beta2 (an upgrade from beta1). Save the install log. Before respringing: `uicache -l \| grep com.hcg.sentinel` and `dpkg-query -W com.hakmicapitalgroup.hcgsentinel`. Then look for the icon. | Install log has no "HCG: uicache could not register" line. `uicache -l` lists exactly one path, `/var/jb/Applications/HCGSentinelModern.app`. dpkg shows `0.1.0~beta2`. The Home Screen icon is labelled **Sentinel**. Record whether it appeared **without** a respring. If not: run `uicache -p /var/jb/Applications/HCGSentinelModern.app`, and respring only if that does not help; record which one worked. Opening it shows the dashboard with HCG mark │ SENTINEL and UNLEASHED, no sign-in, status "Idle". |
+| 2 | **Bluetooth permission** | Bluetooth tab. If it says "Scanning is off", tap **Turn on scanning and start**. | The iOS prompt names Sentinel and its reason. Tap Allow. The card goes Starting… → Scanning. If no prompt appears and the card ends with **Bluetooth did not respond**, open **Bluetooth diagnostics**, tap Copy and paste it into the result. |
+| 3 | **BLE scan with a known device** | Scan near your known advertising device. Open it. | It appears within ~10 s. Signal strength keeps updating (continuous updates are on). The detail shows name source, services, signal history and last seen. Devices without a broadcast name show as **Unknown device**. |
+| 4 | **Scan cancellation** | Tap Stop during a scan. Start again, then let it hit the time limit. | "Stopped · N devices listed"; results stay. The automatic stop happens at the limit shown. Diagnostics events list both stops. |
+| 5 | **Bluetooth disabled** | Turn Bluetooth off in Control Centre (or Settings), then start a scan. | **Bluetooth is off**, nothing new listed, no crash. Turn it on and start again: it scans. |
+| 6 | **Wi-Fi connected and disconnected** | Network tab › Wi-Fi. Turn Wi-Fi off, wait 5 s, turn it back on. | Connected: status Online via Wi-Fi, interface `en0`, IPv4, subnet, gateway. Off: "Not on Wi-Fi". Connection changes lists both transitions with times. |
+| 7 | **Current network diagnostics** | Wi-Fi screen: compare with iOS Settings › Wi-Fi › (i). Tap **Ask iOS for the network name**. Run Check My Network. | IP address, subnet mask and router match iOS Settings. The SSID request says unavailable with the entitlement reason (expected for this build). Check My Network completes. |
+| 8 | **Nearby Wi-Fi discovery** | Wi-Fi screen › Nearby Wi-Fi networks. | Shows **Unsupported** with the reason; no networks are listed. (Expected: this build has no helper.) |
+| 9 | **Local Bonjour discovery** | Network tools › Local Network › Browse. | First time: iOS asks for local network access; Allow. Within 20 s services such as AirPlay, printers or HomeKit appear with type, host name and addresses. If refused: the card says so and links to iOS Settings. |
+| 10 | **Authorised subnet discovery** | Local Network › range pre-filled with your /24. Try Start without confirming, then try `8.8.8.0/24` and `192.168.0.0/16`. Then confirm and sweep your own range. | Start is disabled until confirmed; the public and /16 ranges are refused with reasons. The sweep shows progress, the router and other devices under **Answered** with method and time; the rest under "No response" with the note that this is not proof of absence. Your own iPhone is not probed. |
+| 11 | **ICMP ping to a reachable device** | Network tools › Ping: your router's IP, ICMP Echo, 10 probes. | 10 replies with times in ms; 0 % loss; min/avg/max. If it says ICMP is not available, record the exact message, then try the TCP connect test to port 80 or 443 and note it is labelled "not ICMP". |
+| 12 | **Unreachable host** | Ping an unused address in your range (for example `.250`), 5 probes, 1 s timeout. | Each probe "no answer within 1 s" (or "No route to host"); 100 % loss; no crash. |
+| 13 | **DNS failure** | Ping `sentinel-test.invalid`. | "DNS: … was not found"; no probes sent. |
+| 14 | **Cancellation and cleanup** | Start a 100-probe ping and a sweep; tap Stop on each. Then start both again and use Dashboard › Stop All Operations. | Each stops within a second; the dashboard returns to Idle; Dashboard › Recent activity shows the stops. |
+| 15 | **Background and foreground** | Start a Bluetooth scan and a ping, press the Home button, wait 10 s, return. | Both were stopped "because Sentinel moved to the background" (activity log); nothing is running; start again works. |
+| 16 | **Respring and relaunch** | Respring (your usual way), then open Sentinel. Force-quit and open again. | Icon still present; the app opens; settings (Scanning switch, labels) are kept. |
+| 17 | **HCG Connect authentication** | Settings › HCG account. | "Not signed in · not available yet" with the reason. No sign-in prompt anywhere; every tool works without an account. (A sign-in test is possible only after HCG registers a client.) |
+| 18 | **Removal and rollback** | Rollback: in a terminal, `sudo dpkg -i <saved beta1 .deb>` (or install 0.1.0~beta1 from Sileo's version list if HCG Repo offers it), open the app, then reinstall beta2. Removal: remove **HCG Sentinel Unleashed** in the package manager. Then `uicache -l \| grep com.hcg.sentinel` and `ls /var/jb/Applications/HCGSentinelModern.app`. | Downgrade and upgrade both work and the app opens each time. After removal: no icon (if it stays, `uicache -a`), `uicache -l` prints nothing, the folder is gone. The app's data container is not removed by dpkg (expected). |
 
-Without Maker, on the Mac:
+## Also worth noting (optional)
 
-```bash
-DEVELOPMENT_TEAM=YOURTEAMID FLAVOR=modern Tools/build.sh archive
-```
-
-```bash
-DEVELOPMENT_TEAM=YOURTEAMID FLAVOR=modern Tools/build.sh export
-```
-
-The IPA is in `build/ipa/`. Install it with Xcode › Window › Devices and Simulators › your iPhone › **+**, or press
-Run in Xcode with the phone selected. On first launch iOS may ask you to trust the developer: Settings › General ›
-VPN & Device Management.
-
-- [ ] The app installs, and the home screen shows **Sentinel** with its icon.
-
-## 1. Launch
-
-- [ ] It opens to the dashboard with no sign-in and no account prompt.
-- [ ] The header shows the metallic HCG mark, a divider and **SENTINEL**, with the status badge beside or below it.
-      Nothing is clipped or overlaps.
-- [ ] A soft blue light moves slowly along the line under the header. With Settings › Accessibility › Motion ›
-      **Reduce Motion** on, the line is static. Sentinel's own Settings › Animations switch does the same.
-- [ ] With Settings › Accessibility › Display & Text Size › **Larger Text** at the largest standard size, the header
-      and dashboard cards still read fully (the header scales down to fit; text wraps rather than truncating).
-- [ ] Force-quit and relaunch: it opens again and keeps your settings.
-
-## 2. Permission handling
-
-Bluetooth (the first scan triggers the prompt):
-
-- [ ] Bluetooth Explorer opens without asking for anything. With Sentinel's Scanning switch off, the card reads
-      **Scanning is off** and offers to turn scanning on and start.
-- [ ] Starting a scan shows the iOS prompt with Sentinel's reason ("…only when you start a scan in Bluetooth
-      Explorer…"). The card reads **Starting…** while the prompt is up.
-- [ ] Choose **Don't Allow**: the card turns to **Bluetooth permission denied** with a button to open iOS Settings,
-      and no devices are listed. Allow it in iOS Settings › Sentinel › Bluetooth, return, start again: it scans.
-- [ ] Turn Bluetooth off in Control Centre while on the screen: the card reads **Bluetooth is off**; nothing is
-      listed as new. Turn it back on and start again.
-
-Local network (only when you use it):
-
-- [ ] Check My Network and the dashboard do not ask for local-network access on launch.
-- [ ] The first request to a local address (Request Composer, or your own radio node) shows the local-network
-      prompt. If you refuse it, the request fails with the error iOS reports, shown in the app; no crash, no empty
-      screen. (Sentinel does not yet say in its own words that local-network access is off.)
-
-## 3. Bluetooth discovery
-
-Do this somewhere with a few Bluetooth LE devices nearby (headphones, a watch, a fitness tracker, another phone).
-
-- [ ] The scan controls and the first results are visible at the top of Bluetooth Explorer without scrolling.
-- [ ] The card reads **Scanning · N devices heard**, and devices appear within a few seconds.
-- [ ] Devices without a broadcast name are listed as **Unknown device**, not guessed.
-- [ ] Each row shows **Signal −NN dBm**; closer devices have a less negative number.
-- [ ] Open a result. It shows where the name came from (broadcast name, your label, or unknown), the advertised
-      services, **Latest signal strength (RSSI)** with a small history chart and the last timestamped readings, and
-      when it was last seen.
-- [ ] Give a device a label, go back: the label shows in the list and in the "Labelled only" filter. It is still
-      there after relaunching the app.
-- [ ] Search, the sort order and each filter (named, labelled, current scan, connectable, advertising services,
-      signal strength) change the list as their names say; **Reset filters** brings everything back.
-- [ ] **Stop**: the card reads **Stopped · N devices listed** and the results stay. Start again: the scan number
-      increases. The scan also stops by itself at the time limit shown on the card.
-- [ ] Somewhere with nothing advertising (or with every device switched off), after about 15 s the card reads
-      **Scanning · nothing heard yet** and explains why.
-
-## What this checklist does not cover
-
-Sign-in with an HCG account does not exist yet (see [HCG_CONNECT.md](HCG_CONNECT.md)). Security Lab against an HCG
-Server, the helper link and the radio node each have their own pages in [TESTING.md](TESTING.md).
+- iPhone model, iOS version, Dopamine version, Sileo or Zebra version.
+- Whether the Bluetooth permission prompt appeared at all (step 2): this decides limitation L2 in [BETA2.md](BETA2.md).
+- Any crash: Settings › Privacy & Security › Analytics & Improvements › Analytics Data › `HCGSentinelModern-…`.
