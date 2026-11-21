@@ -5,6 +5,32 @@ What has actually been checked, and how. "Not done" means exactly that.
 Sources: CI runs on GitHub Actions. Complete logs and `.xcresult` bundles are attached to each *Archive check*
 run as artifacts: <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/workflows/archive.yml>
 
+## Beta2: 0.1.0~beta2 (21 November 2026)
+
+HCG Sentinel Unleashed 0.1.0~beta2, source commit `680cb3f`. Every result below comes from a CI run on that commit;
+none comes from a device. Details of what was built: [BETA2.md](BETA2.md).
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| SentinelCore on Linux | **Passed**: 256 tests, 0 skipped. Includes a real ICMP Echo round trip to 127.0.0.1 over an unprivileged ICMP socket (the runner was set to allow them, as iOS does), real TCP connect accepted/refused, the real resolver's "not found", Bluetooth watchdog and diagnostics, sweep scope rules | CI › SentinelCore tests (Linux) |
+| App and core tests in the iOS Simulator (scheme `HCGSentinel`, Xcode 26.6) | **Passed** ("TEST SUCCEEDED"). Core: 257 tests, 7 skipped (live local services or the mock node not reachable from that step). The real ICMP loopback test passed on Darwin (replies arrive with an IPv4 header there). App tests include the new Ping and Local Network wiring | CI › App build and tests (Xcode) |
+| Build matrix | __MATRIX__ | Build matrix |
+| Simulator screenshots of the network tools | __SHOTS__ | CI › Simulator screenshots |
+| Real iOS arm64 Release build | **Passed**: `HCGSentinelModern`, Release, generic iOS device, Xcode 26.6; arm64 only; `minos 15.0` | Beta package run [44886884963](https://github.com/F1r3srp3nt/HCG-Sentinel/actions/runs/44886884963) |
+| Rootless package | **Passed**: `com.hakmicapitalgroup.hcgsentinel` `0.1.0~beta2` `iphoneos-arm64`, Name "HCG Sentinel Unleashed", every file under `/var/jb/Applications/HCGSentinelModern.app` | same run |
+| Identifiers | **Unchanged**: bundle ID `com.hcg.sentinel`, Home Screen name `Sentinel`, app 0.1.0 build 2 (beta1: build 1) | same run |
+| Dependencies | `firmware (>= 15.0), uikittools`, the same as beta1 | same run |
+| Signing and entitlements | ldid pseudo-signature (CodeDirectory present); **no entitlements**, the same as beta1 (the run fails if they differ) | Maker validator "[Passed] Entitlements: No entitlements embedded" |
+| Package scripts | `postinst` (`uicache -p`) and `postrm` (`uicache -u`) **byte-identical** to beta1; no other scripts | same run |
+| Maker's rootless validator, iOS 16.5 and 17.4 | **Passed**, including "0.1.0~beta2 is new and sorts above every published version (0.1.0~beta1)" | same run |
+| SHA-256 | `6d783bdb4d529fe6d0fb340b6ae04462484376fce87565b0922fcfedfd6e4e61`, 3,668,560 bytes | artifact `hcg-sentinel-unleashed-0.1.0-beta2-deb` |
+| HCG Repo inspector (HCG Repo `4aa36a0`) | **OK**: package passes package-level validation | same run |
+| HCG Repo importer dry run, as exported | Bytes **validated** for Candidate; HCG Repo would keep the version protected and not serve it until the owner's approval is recorded. (The script prints "REJECTED" for this case because nothing would be served; that is the intended state.) | same run |
+| HCG Repo importer dry run, throwaway copy with beta1's approval kept and a labelled hypothetical one for beta2 | **VALIDATED**: the importer accepts these exact bytes for Candidate. Nothing written to HCG Repo | same run |
+| Upgrade from beta1 and rollback (Linux dpkg sandbox, the uploaded artifact's bytes) | **Passed**: install beta1 → upgrade to beta2 → roll back to beta1 → upgrade again → remove (0 files left) → purge. `uicache -p` ran on each configure, `uicache -u` on removal; upgrades did not unregister the app | Beta package › dpkg sandbox |
+| Physical device | **Not tested.** No iPhone is reachable from CI or this session | [BETA_CHECKLIST.md](BETA_CHECKLIST.md) |
+| Publication | **Not done.** Awaiting the owner's approval ([release/0.1.0-beta2.md](release/0.1.0-beta2.md)) | — |
+
 ## Beta: Maker route, header, Bluetooth day one, HCG Connect (21 November 2026)
 
 Runs on branch `claude/festive-shannon-1nfggt`: build matrix 44862482640, CI 44862482689, archive check 44862482520,

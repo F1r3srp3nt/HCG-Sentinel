@@ -185,7 +185,7 @@ these values:
 
 | File | 0.1.0~beta2 | HCG header and Bluetooth beta | 03bc6e5 … 490858c (0.1.0~beta1) | 810c6f9 (older) |
 | --- | --- | --- | --- | --- |
-| `HCGSentinel.xcodeproj/project.pbxproj` | `__PBXPROJ__` | `6616c5aecf787c2126b2a0d1c6acd68f2f253bfac11451a413d00a14316796d7` | `8a5c6cfbcd930074f61284538a64fd191bb31f2d3d665b05c5c66f73afe9e0b0` | `38d95aa724b0fad6f99806ff5ccf70d260af0f03433162a9b94ce0b0850b2545` |
+| `HCGSentinel.xcodeproj/project.pbxproj` | `df5e5a6f1750b870f6f9fd85cb8ae5ec63e03e798e6257387eac0054abc1e088` | `6616c5aecf787c2126b2a0d1c6acd68f2f253bfac11451a413d00a14316796d7` | `8a5c6cfbcd930074f61284538a64fd191bb31f2d3d665b05c5c66f73afe9e0b0` | `38d95aa724b0fad6f99806ff5ccf70d260af0f03433162a9b94ce0b0850b2545` |
 | `…/xcschemes/HCGSentinel.xcscheme` | `3cdf71c801f54e86d68b905672bcddf8d70cbf1ab597f00cc66b1ca08ad254a1` | same | same | same |
 | `…/xcschemes/HCGSentinelModern.xcscheme` | `1e95a1302043a8b80d5a092accd4f5286829a10809fe55aeeee385a8fe1f7b5a` | same | same | `bc3e14ca0cfdcf0f2609f053a33dcc7f9e604f2e1fabf070b26a4888d8f5af89` |
 

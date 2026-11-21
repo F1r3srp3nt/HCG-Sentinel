@@ -144,7 +144,7 @@ no "existing registration" to reuse. Beta2 therefore:
 
 ## 10. Automated test results
 
-See [VALIDATION.md](VALIDATION.md#beta2-0-1-0beta2-21-november-2026), filled in from CI runs (not from expectations).
+See [VALIDATION.md](VALIDATION.md#beta2-010beta2-21-november-2026), filled in from CI runs (not from expectations).
 
 ## 11. Physical-device checklist
 
