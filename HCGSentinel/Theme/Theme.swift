@@ -327,23 +327,33 @@ struct PulseDot: View {
     }
 }
 
-/// A thin line of cyan light that travels across a surface. Static when motion is off.
+/// The divider under the HCG lockup. With motion allowed, a short, faint cyan light drifts slowly across it; under
+/// Reduce Motion or with Sentinel's Animation switch off, it is a plain static line.
 struct SweepLine: View {
     @Environment(\.sentinelMotion) private var motion
     @State private var travelled = false
+
+    /// Fraction of the line the light covers, its peak opacity and one pass in seconds: kept subtle on purpose.
+    static let lightWidth: CGFloat = 0.22
+    static let peakOpacity: Double = 0.75
+    static let passDuration: Double = 4.8
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Rectangle().fill(Theme.hairline)
-                Rectangle()
-                    .fill(LinearGradient(gradient: Gradient(colors: [Theme.cyan.opacity(0), Theme.cyan, Theme.cyan.opacity(0)]),
-                                         startPoint: .leading, endPoint: .trailing))
-                    .frame(width: proxy.size.width * 0.35)
-                    .offset(x: motion ? (travelled ? proxy.size.width * 0.65 : 0) : proxy.size.width * 0.325)
+                if motion {
+                    Rectangle()
+                        .fill(LinearGradient(gradient: Gradient(colors: [Theme.cyan.opacity(0), Theme.cyan.opacity(SweepLine.peakOpacity),
+                                                                        Theme.cyan.opacity(0)]),
+                                             startPoint: .leading, endPoint: .trailing))
+                        .frame(width: proxy.size.width * SweepLine.lightWidth)
+                        .offset(x: travelled ? proxy.size.width * (1 - SweepLine.lightWidth) : 0)
+                        .transition(.opacity)
+                }
             }
         }
-        .frame(height: 2)
+        .frame(height: 1.5)
         .clipped()
         .onAppear { start() }
         .onChange(of: motion) { _ in start() }
@@ -353,7 +363,7 @@ struct SweepLine: View {
     private func start() {
         travelled = false
         guard motion else { return }
-        withAnimation(Animation.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) { travelled = true }
+        withAnimation(Animation.easeInOut(duration: SweepLine.passDuration).repeatForever(autoreverses: true)) { travelled = true }
     }
 }
 

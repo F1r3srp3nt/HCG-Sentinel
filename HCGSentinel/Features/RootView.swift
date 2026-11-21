@@ -9,6 +9,15 @@ struct RootView: View {
 
     private var isCompact: Bool { sizeClass != .regular }
 
+    /// Motion follows Sentinel's Animation switch and the system Reduce Motion setting. Screenshot checks in CI can
+    /// force the static appearance with the debug-only launch argument -SentinelStaticMotion.
+    private var motionAllowed: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-SentinelStaticMotion") { return false }
+        #endif
+        return app.settings.animationsEnabled && !reduceMotion
+    }
+
     var body: some View {
         Group {
             if isCompact {
@@ -17,7 +26,7 @@ struct RootView: View {
                 RegularLayout()
             }
         }
-        .environment(\.sentinelMotion, app.settings.animationsEnabled && !reduceMotion)
+        .environment(\.sentinelMotion, motionAllowed)
         .accentColor(Theme.cyan)
         .preferredColorScheme(.dark)
         .onAppear { router.layoutChanged(compact: isCompact) }
@@ -32,7 +41,7 @@ struct RootView: View {
                     }
             }
             .modifier(ModelInjection(app: app, router: router))
-            .environment(\.sentinelMotion, app.settings.animationsEnabled && !reduceMotion)
+            .environment(\.sentinelMotion, motionAllowed)
             .accentColor(Theme.cyan)
             .preferredColorScheme(.dark)
         }

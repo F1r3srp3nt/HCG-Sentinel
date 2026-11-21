@@ -64,7 +64,7 @@ final class BluetoothModelTests: XCTestCase {
         XCTAssertEqual(registry.state(.bluetoothDiscovery)?.readiness, .verified, "verified only by a received advertisement")
         let silent = model.peripherals.first { $0.id == unnamed }!
         XCTAssertEqual(model.nameSource(silent), .notBroadcast)
-        XCTAssertEqual(model.nameSource(silent).text, "Name not broadcast")
+        XCTAssertEqual(model.nameSource(silent).text, "Unknown device")
 
         model.setLabel("Hallway tag", for: unnamed)
         XCTAssertEqual(model.nameSource(silent), .userLabel("Hallway tag"))

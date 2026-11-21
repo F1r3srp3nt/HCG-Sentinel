@@ -52,7 +52,12 @@ final class AppModel: ObservableObject {
         self.captureStore = captureStore
         diagnosticFile = DiagnosticLogFile(url: support.appendingPathComponent("Diagnostics/sentinel-activity.log"))
 
-        bluetooth = BluetoothModel(central: CoreBluetoothCentral(), log: log, registry: registry)
+        var central: BluetoothCentral = CoreBluetoothCentral()
+        #if DEBUG
+        // Screenshot checks in CI only: a fake radio, because the Simulator has none.
+        if let fixture = BluetoothFixtureCentral.fromLaunchArguments() { central = fixture }
+        #endif
+        bluetooth = BluetoothModel(central: central, log: log, registry: registry)
         network = NetworkModel(store: captureStore, log: log, registry: registry)
         radio = RadioModel(transport: WebSocketNodeTransport(), log: log, registry: registry)
         requests = RequestModel(transport: URLSessionHTTPTransport(), log: log, registry: registry)

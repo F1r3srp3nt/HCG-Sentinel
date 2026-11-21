@@ -20,6 +20,7 @@ struct BluetoothExplorerView: View {
     @EnvironmentObject private var router: Router
     @State private var now = Date()
     @State private var showFilters = false
+    @State private var openDevice: UUID?
     private let clock = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     private var isPreview: Bool { bluetooth.previewMode }
@@ -52,7 +53,7 @@ struct BluetoothExplorerView: View {
                 }
             } else {
                 ForEach(devices) { device in
-                    NavigationLink(destination: PeripheralDetailView(deviceID: device.id, isPreview: isPreview)) {
+                    NavigationLink(destination: PeripheralDetailView(deviceID: device.id, isPreview: isPreview), tag: device.id, selection: $openDevice) {
                         PeripheralRow(device: device, name: isPreview ? device.nameSource(label: nil) : bluetooth.nameSource(device),
                                       currentScan: isPreview ? 1 : bluetooth.scanNumber, now: now, isPreview: isPreview)
                     }
@@ -63,108 +64,117 @@ struct BluetoothExplorerView: View {
         }
         .navigationBarTitle("Bluetooth Explorer", displayMode: .inline)
         .onReceive(clock) { now = $0 }
+        .onAppear {
+            #if DEBUG
+            // Screenshot checks in CI: with a fixture radio, start a scan as the button would, and optionally open the
+            // first device after a few seconds of readings.
+            if BluetoothFixtureCentral.fromLaunchArguments() != nil, !bluetooth.state.isActive {
+                turnOnScanningAndStart()
+                if ProcessInfo.processInfo.arguments.contains("-SentinelOpenFirstDevice") {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5) { openDevice = bluetooth.visiblePeripherals.first?.id }
+                }
+            }
+            #endif
+        }
     }
 
     // MARK: Scan control
 
-    private var controlCard: some View {
-        SentinelCard(highlight: isScanning ? Theme.cyan : nil) {
-            AdaptiveStack(spacing: 8) {
-                PulseDot(color: stateTone.color, active: isScanning)
-                Text(stateTitle)
-                    .font(.headline)
-                    .foregroundColor(Theme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-                StatusPill(text: statePill, tone: stateTone)
-            }
-            stateDetail
-            if !isPreview {
-                InfoRow(label: "Heard in this scan", value: "\(heardThisScan)")
-                InfoRow(label: "Listed in total", value: "\(bluetooth.peripherals.count)")
-                if bluetooth.state.isActive {
-                    Button(action: { bluetooth.stop() }) {
-                        Label("Stop scanning", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(SentinelButtonStyle(kind: .destructive, fullWidth: true))
-                } else {
-                    Button(action: { bluetooth.start() }) {
-                        Label(bluetooth.scanNumber > 0 ? "Scan again" : "Start scanning", systemImage: "play.fill")
-                    }
-                    .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
-                }
-            }
+    private var status: BluetoothScreenStatus {
+        BluetoothScreenStatus.derive(state: bluetooth.state, scanningEnabled: bluetooth.enabledInSettings,
+                                     heardThisScan: heardThisScan, listed: bluetooth.peripherals.count, now: now)
+    }
+
+    private var statusTone: Tone {
+        if status.isProblem { return status.kind == .permissionDenied || status.kind == .bluetoothOff ? .danger : .warning }
+        switch status.kind {
+        case .scanningWithResults, .scanningNothingYet, .starting: return .ready
+        case .scanningNoResults: return .info
+        case .scanningSwitchOff: return .accent
+        default: return .off
         }
+    }
+
+    @ViewBuilder private var controlCard: some View {
+        if isPreview {
+            SentinelCard {
+                Text("Scanning unavailable in Preview mode").font(.headline).foregroundColor(Theme.textPrimary)
+                Explanation("Turn Preview mode off in Settings to scan for real devices.")
+            }
+        } else {
+            let status = self.status
+            SentinelCard(highlight: status.isActive ? Theme.cyan : (status.isProblem ? statusTone.color : nil)) {
+                AdaptiveStack(spacing: 10) {
+                    ZStack {
+                        Circle().fill(statusTone.color.opacity(0.16)).frame(width: 34, height: 34)
+                        Image(systemName: status.symbol).foregroundColor(statusTone.color)
+                    }
+                    .accessibilityHidden(true)
+                    Text(status.title)
+                        .font(.headline)
+                        .foregroundColor(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    if status.isActive { PulseDot(color: Theme.cyan, active: true) }
+                }
+                Text(status.detail)
+                    .font(.subheadline)
+                    .foregroundColor(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let since = scanningSince {
+                    Text("Started \(Formatters.time.string(from: since)) · \(deadlineText)")
+                        .font(Theme.mono(.caption))
+                        .foregroundColor(Theme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                primaryButton(status)
+            }
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    @ViewBuilder private func primaryButton(_ status: BluetoothScreenStatus) -> some View {
+        switch status.primaryAction {
+        case .stop:
+            Button(action: { bluetooth.stop() }) { Label("Stop scanning", systemImage: "stop.fill") }
+                .buttonStyle(SentinelButtonStyle(kind: .destructive, fullWidth: true))
+        case .start:
+            Button(action: { bluetooth.start() }) {
+                Label(bluetooth.scanNumber > 0 ? "Scan again" : "Start scanning", systemImage: "play.fill")
+            }
+            .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
+        case .turnOnScanningAndStart:
+            Button(action: turnOnScanningAndStart) { Label("Turn on scanning and start", systemImage: "play.fill") }
+                .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
+        case .openSystemSettings:
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                Button(action: { UIApplication.shared.open(url) }) { Label("Open iOS Settings for Sentinel", systemImage: "gear") }
+                    .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
+            }
+        case .none:
+            EmptyView()
+        }
+    }
+
+    /// The same as turning on Scanning in Settings, then one scan. Only ever runs on this button press.
+    private func turnOnScanningAndStart() {
+        app.settings.scanningEnabled = true
+        bluetooth.start()
     }
 
     private var heardThisScan: Int {
-        guard bluetooth.scanNumber > 0 else { return 0 }
+        guard bluetooth.scanNumber > 0, bluetooth.state.isActive || bluetooth.state == .idle else { return 0 }
         return bluetooth.peripherals.filter { $0.lastScan == bluetooth.scanNumber }.count
     }
 
-    private var isScanning: Bool {
-        if case .scanning = bluetooth.state, !isPreview { return true }
-        return false
-    }
-
-    private var stateTitle: String {
-        if isPreview { return "Scanning unavailable in Preview mode" }
-        switch bluetooth.state {
-        case .idle: return bluetooth.scanNumber > 0 ? "Not scanning — list shows earlier results" : "Not scanning"
-        case .waitingForRadio: return "Waiting for Bluetooth…"
-        case .scanning: return "Scanning for advertisements"
-        case .blocked(let blocker): return blocker.title
-        }
-    }
-
-    private var statePill: String {
-        if isPreview { return "Preview" }
-        switch bluetooth.state {
-        case .idle: return "Stopped"
-        case .waitingForRadio: return "Starting"
-        case .scanning: return "Scan \(bluetooth.scanNumber) live"
-        case .blocked: return "Blocked"
-        }
-    }
-
-    private var stateTone: Tone {
-        if isPreview { return .accent }
-        switch bluetooth.state {
-        case .idle: return .off
-        case .waitingForRadio, .scanning: return .ready
-        case .blocked: return .warning
-        }
-    }
-
-    @ViewBuilder private var stateDetail: some View {
-        if isPreview {
-            Explanation("Turn Preview mode off in Settings to scan for real devices.")
-        } else {
-            switch bluetooth.state {
-            case .idle:
-                Explanation(bluetooth.enabledInSettings
-                            ? "A scan runs only after you start it, and stops when you stop it or at its time limit. Devices stay listed until you clear the list."
-                            : "Scanning is turned off in Settings. Starting a scan will explain how to enable it.")
-            case .waitingForRadio:
-                Explanation("iOS may be asking for Bluetooth permission. The scan starts as soon as Bluetooth reports that it is ready.")
-            case .scanning(let since):
-                Explanation("Started \(Formatters.time.string(from: since)) (\(RelativeAge.text(since, now: now))). \(deadlineText)")
-            case .blocked(let blocker):
-                NoticeBanner(icon: "exclamationmark.triangle.fill", text: blocker.guidance, tone: .warning)
-                if blocker == .disabledInSettings {
-                    Button("Open Sentinel Settings") { router.open(.settings) }
-                        .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
-                } else if blocker == .permissionDenied, let url = URL(string: UIApplication.openSettingsURLString) {
-                    Button("Open iOS Settings for Sentinel") { UIApplication.shared.open(url) }
-                        .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
-                }
-            }
-        }
+    private var scanningSince: Date? {
+        if case .scanning(let since) = bluetooth.state { return since }
+        return nil
     }
 
     private var deadlineText: String {
-        guard let deadline = bluetooth.autoStopDeadline else { return "No time limit is set." }
-        return "Stops automatically at \(Formatters.time.string(from: deadline))."
+        guard let deadline = bluetooth.autoStopDeadline else { return "no time limit" }
+        return "stops at \(Formatters.time.string(from: deadline))"
     }
 
     // MARK: What the scan can and cannot tell
@@ -236,13 +246,23 @@ struct BluetoothExplorerView: View {
     }
 
     private var emptyTitle: String {
-        bluetooth.peripherals.isEmpty ? "No devices listed" : "No devices match the filters"
+        if !bluetooth.peripherals.isEmpty { return "No devices match the filters" }
+        switch status.kind {
+        case .scanningNothingYet, .starting: return "Listening…"
+        case .scanningNoResults: return "Nothing heard yet"
+        case .permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting: return "No results while Bluetooth is unavailable"
+        default: return "No devices listed"
+        }
     }
 
     private var emptyMessage: String {
         if !bluetooth.peripherals.isEmpty { return "Change the search or filters to see the other devices." }
-        if bluetooth.state.isActive { return "Listening. Devices appear when an advertisement is received. Many devices advertise only every few seconds." }
-        return "Start a scan to list Bluetooth LE devices that are advertising nearby."
+        switch status.kind {
+        case .scanningNothingYet, .starting: return "Devices appear here as soon as an advertisement is received."
+        case .scanningNoResults: return "Keep scanning, or move closer to a device you expect. Phones, watches and headphones often advertise only while in use or pairing."
+        case .permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting: return "Fix the problem shown above first; Sentinel cannot hear devices until then."
+        default: return "Start a scan to list Bluetooth LE devices that are advertising nearby."
+        }
     }
 }
 
@@ -282,7 +302,7 @@ private struct PeripheralRow: View {
                 Spacer(minLength: 6)
                 HStack(spacing: 6) {
                     SignalBars(bars: device.signalBars)
-                    Text(device.rssi.map { "\($0) dBm" } ?? "no reading")
+                    Text(device.rssi.map { "Signal \($0) dBm" } ?? "No signal reading")
                         .font(Theme.mono(.subheadline))
                         .foregroundColor(Theme.textPrimary)
                 }
@@ -382,12 +402,20 @@ struct PeripheralDetailView: View {
             }
             SentinelCard {
                 SectionLabel(text: "Signal strength")
-                InfoRow(label: "Latest RSSI", value: device.rssi.map { "\($0) dBm" } ?? "No reading", mono: true)
+                InfoRow(label: "Latest signal strength (RSSI)", value: device.rssi.map { "\($0) dBm" } ?? "No reading", mono: true)
                 if let at = device.rssiAt {
                     InfoRow(label: "Measured", value: "\(Formatters.time.string(from: at)) (\(RelativeAge.text(at, now: now)))", mono: true)
                 }
                 if let range = device.rssiRange, device.recentRSSI.count > 1 {
                     InfoRow(label: "Last \(device.recentRSSI.count) readings", value: "\(range.lowerBound) to \(range.upperBound) dBm", mono: true)
+                }
+                if device.rssiHistory.count > 1 {
+                    SignalHistoryChart(readings: device.rssiHistory)
+                        .frame(height: 64)
+                        .accessibilityLabel("Signal history: \(device.rssiHistory.count) readings from \(device.rssiHistory.map { $0.dBm }.min() ?? 0) to \(device.rssiHistory.map { $0.dBm }.max() ?? 0) dBm")
+                    ForEach(Array(device.rssiHistory.suffix(5).reversed().enumerated()), id: \.offset) { item in
+                        InfoRow(label: Formatters.preciseTime.string(from: item.element.at), value: "\(item.element.dBm) dBm", mono: true)
+                    }
                 }
                 InfoRow(label: "Strength", value: device.signalDescription)
                 InfoRow(label: "Advertised TX power", value: device.txPower.map { "\($0) dBm" } ?? "Not advertised", mono: true)
@@ -423,6 +451,32 @@ struct PeripheralDetailView: View {
                 InfoRow(label: "Last heard", value: "\(Formatters.time.string(from: device.lastSeen)) (\(RelativeAge.text(device.lastSeen, now: now)))", mono: true)
                 InfoRow(label: "Advertisements received", value: "\(device.sightings) in total, \(device.sightingsInLastScan) in scan \(device.lastScan)")
                 Explanation("The identifier is generated by iOS for Sentinel on this phone. It is not the Bluetooth hardware address and differs on other phones.")
+            }
+        }
+    }
+}
+
+/// The last readings as a line, oldest left. Stronger is higher; the scale is the readings' own range, so it shows
+/// change, not distance.
+struct SignalHistoryChart: View {
+    let readings: [RSSIReading]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let values = readings.map { Double($0.dBm) }
+            let low = (values.min() ?? -100) - 2, high = (values.max() ?? -40) + 2
+            let span = max(1, high - low)
+            let step = values.count > 1 ? proxy.size.width / CGFloat(values.count - 1) : 0
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.panelInset)
+                Path { path in
+                    for (index, value) in values.enumerated() {
+                        let point = CGPoint(x: CGFloat(index) * step,
+                                            y: proxy.size.height * CGFloat(1 - (value - low) / span))
+                        if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+                    }
+                }
+                .stroke(Theme.cyan, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
             }
         }
     }

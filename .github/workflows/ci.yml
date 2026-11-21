@@ -175,6 +175,24 @@ jobs:
           done
           xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
           for file in screenshots/*.png; do sips -Z 1400 "$file" >/dev/null; done
+      - name: Bluetooth states with the debug-only fixture radio, and the static header (Reduce Motion path)
+        timeout-minutes: 10
+        run: |
+          xcrun simctl ui "$SIMULATOR_UDID" content_size large
+          shot() { name="$1"; wait="$2"; shift 2
+            xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+            sleep 1
+            xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel "$@"
+            sleep "$wait"
+            xcrun simctl io "$SIMULATOR_UDID" screenshot "screenshots/$name.png"; }
+          shot fixture-bluetooth-denied 8 -SentinelSection bluetooth -SentinelBluetoothFixture denied
+          shot fixture-bluetooth-off 8 -SentinelSection bluetooth -SentinelBluetoothFixture off
+          shot fixture-bluetooth-quiet 25 -SentinelSection bluetooth -SentinelBluetoothFixture quiet
+          shot fixture-bluetooth-results 12 -SentinelSection bluetooth -SentinelBluetoothFixture results
+          shot fixture-bluetooth-detail 14 -SentinelSection bluetooth -SentinelBluetoothFixture results -SentinelOpenFirstDevice YES
+          shot static-motion-dashboard 8 -SentinelSection dashboard -SentinelStaticMotion YES
+          xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+          for file in screenshots/fixture-*.png screenshots/static-*.png; do sips -Z 1400 "$file" >/dev/null; done
       - name: Record the dashboard header (animation preview)
         timeout-minutes: 5
         run: |

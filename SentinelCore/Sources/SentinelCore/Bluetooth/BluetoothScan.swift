@@ -70,7 +70,7 @@ public enum BluetoothNameSource: Equatable {
     public var text: String {
         switch self {
         case .userLabel(let name), .advertised(let name), .system(let name): return name
-        case .notBroadcast: return "Name not broadcast"
+        case .notBroadcast: return "Unknown device"
         }
     }
 
@@ -79,7 +79,7 @@ public enum BluetoothNameSource: Equatable {
         case .userLabel: return "Your label on this phone. The device did not choose it."
         case .advertised: return "Name in the device's advertisement. Any device can broadcast any name."
         case .system: return "Name iOS reports for this identifier. It may come from an earlier connection, not from the current advertisement."
-        case .notBroadcast: return "Many devices do not broadcast a name. That alone says nothing about what the device is or whether it is a concern."
+        case .notBroadcast: return "This device broadcast no name, so Sentinel cannot tell what it is. Many devices do this; it says nothing about whether it is a concern."
         }
     }
 }
@@ -102,6 +102,8 @@ public struct DiscoveredPeripheral: Identifiable, Equatable {
     public var rssiAt: Date?
     /// The most recent valid readings, newest last (at most 12).
     public var recentRSSI: [Int] = []
+    /// The same readings with the time each was received, newest last (at most 12).
+    public var rssiHistory: [RSSIReading] = []
     public var manufacturerData: [UInt8]?
     public var serviceData: [String: [UInt8]] = [:]
     public var overflowServiceUUIDs: [String] = []
@@ -383,6 +385,8 @@ public final class BluetoothScanController: BluetoothCentralDelegate {
             device.rssiAt = time
             device.recentRSSI.append(reading)
             if device.recentRSSI.count > 12 { device.recentRSSI.removeFirst(device.recentRSSI.count - 12) }
+            device.rssiHistory.append(RSSIReading(dBm: reading, at: time))
+            if device.rssiHistory.count > 12 { device.rssiHistory.removeFirst(device.rssiHistory.count - 12) }
         }
         if device.lastScan != scan {
             device.lastScan = scan
