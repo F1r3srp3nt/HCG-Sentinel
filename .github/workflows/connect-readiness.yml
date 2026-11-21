@@ -1,11 +1,16 @@
 name: HCG Connect readiness (manual)
 
-# Read-only configuration checks against HCG Connect, run by hand only (Actions › this workflow › Run workflow).
+# Read-only configuration checks against HCG Connect (Actions › this workflow › Run workflow).
 # No account, token or client secret is used; nothing is registered or changed. Sentinel has no registered client yet,
 # so these checks show what exists centrally and that an unregistered client is refused. See docs/HCG_CONNECT.md.
 
 on:
   workflow_dispatch:
+  # Also runs once when this file or the readiness doc changes on a branch, so the results sit beside the PR.
+  push:
+    paths:
+      - .github/workflows/connect-readiness.yml
+      - docs/HCG_CONNECT.md
 
 permissions:
   contents: read
