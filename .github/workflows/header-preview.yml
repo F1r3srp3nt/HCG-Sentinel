@@ -1,0 +1,87 @@
+name: Dashboard header preview
+
+# Builds the app for the iOS Simulator and photographs the dashboard header: on a 375-point iPhone SE at the default,
+# XXXL and an accessibility text size, and on an iPad; plus a short screen recording of the moving divider light.
+# Unsigned; nothing is installed on a device or uploaded anywhere but this run's artifacts.
+
+on:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "HCGSentinel/Theme/**"
+      - "HCGSentinel/Features/DashboardView.swift"
+      - "HCGSentinel/Resources/Assets.xcassets/**"
+      - ".github/workflows/header-preview.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: header-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Dashboard header · ${{ matrix.device }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { device: small, sizes: "large extra-extra-extra-large accessibility-extra-extra-large" }
+          - { device: iPad, sizes: "large" }
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pick a simulator
+        run: python3 Tools/pick_simulator.py "${{ matrix.device }}" >> "$GITHUB_ENV"
+      - name: Build for the simulator (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel -configuration Debug \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO 2>&1 | tee build.log | grep -E "error:|warning: .*(HCGMark|BrandLockup|Theme.swift|DashboardView)|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+          app=build/Build/Products/Debug-iphonesimulator/HCGSentinel.app
+          echo "APP=$app" >> "$GITHUB_ENV"
+          echo "Bundled asset catalog:"; xcrun --sdk iphonesimulator assetutil --info "$app/Assets.car" | grep -A6 '"Name" : "HCGMark"' | head -20
+      - name: Boot and install
+        timeout-minutes: 10
+        run: |
+          xcrun simctl boot "$SIMULATOR_UDID" || true
+          xcrun simctl bootstatus "$SIMULATOR_UDID" -b
+          xcrun simctl install "$SIMULATOR_UDID" "$APP"
+          xcrun simctl status_bar "$SIMULATOR_UDID" override --time 9:41 || true
+      - name: Screenshots and recording of the dashboard
+        timeout-minutes: 15
+        run: |
+          mkdir -p preview
+          for size in ${{ matrix.sizes }}; do
+            xcrun simctl ui "$SIMULATOR_UDID" content_size "$size"
+            xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+            sleep 1
+            xcrun simctl launch "$SIMULATOR_UDID" com.hcg.sentinel -SentinelSection dashboard
+            sleep 8
+            xcrun simctl io "$SIMULATOR_UDID" screenshot "preview/${{ matrix.device }}-$size.png"
+            if [ "$size" = large ]; then
+              # About two passes of the light (3.2 s each way).
+              xcrun simctl io "$SIMULATOR_UDID" recordVideo --codec=h264 --force "preview/${{ matrix.device }}-$size.mp4" &
+              rec=$!
+              sleep 8
+              kill -INT "$rec"; wait "$rec" || true
+            fi
+          done
+          xcrun simctl terminate "$SIMULATOR_UDID" com.hcg.sentinel || true
+          ls -la preview
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: header-preview-${{ matrix.device }}
+          path: |
+            preview
+            build.log
+          if-no-files-found: warn
+          retention-days: 14
