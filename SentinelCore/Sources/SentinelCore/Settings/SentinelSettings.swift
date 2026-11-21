@@ -12,7 +12,12 @@ public struct SentinelSettings: Codable, Equatable {
     public var previewMode = false
 
     public var scanningEnabled = false
-    public var bluetoothContinuousUpdates = false
+    /// On by default since 0.1.0~beta2: with it off, iOS reports each device about once per scan, so signal strength
+    /// and "last seen" never change and the list looks frozen. Scans are user-started and time-limited.
+    public var bluetoothContinuousUpdates = true
+    /// Version of the stored settings. 1 (or absent) is 0.1.0~beta1 and earlier; 2 is 0.1.0~beta2.
+    public var schemaVersion = SentinelSettings.currentSchemaVersion
+    public static let currentSchemaVersion = 2
     public var bluetoothAutoStopSeconds = 60
 
     public var captureRetention = RetentionPolicy.sevenDays
@@ -43,7 +48,13 @@ public struct SentinelSettings: Codable, Equatable {
         previewMode = try c.decodeIfPresent(Bool.self, forKey: .previewMode) ?? d.previewMode
         scanningEnabled = try c.decodeIfPresent(Bool.self, forKey: .scanningEnabled)
             ?? legacy.decodeIfPresent(Bool.self, forKey: .bluetoothScanningEnabled) ?? d.scanningEnabled
-        bluetoothContinuousUpdates = try c.decodeIfPresent(Bool.self, forKey: .bluetoothContinuousUpdates) ?? d.bluetoothContinuousUpdates
+        let storedVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        // Settings from 0.1.0~beta1 and earlier always stored the old default (off) for continuous updates, whether or
+        // not the user chose it; that default made scans look frozen, so those settings move to the new default once.
+        bluetoothContinuousUpdates = storedVersion < 2
+            ? d.bluetoothContinuousUpdates
+            : try c.decodeIfPresent(Bool.self, forKey: .bluetoothContinuousUpdates) ?? d.bluetoothContinuousUpdates
+        schemaVersion = SentinelSettings.currentSchemaVersion
         bluetoothAutoStopSeconds = try c.decodeIfPresent(Int.self, forKey: .bluetoothAutoStopSeconds) ?? d.bluetoothAutoStopSeconds
         captureRetention = (try? c.decodeIfPresent(RetentionPolicy.self, forKey: .captureRetention)) ?? d.captureRetention
         if let value = try c.decodeIfPresent(Bool.self, forKey: .remoteConnectionsEnabled) {

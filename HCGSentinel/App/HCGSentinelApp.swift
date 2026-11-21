@@ -6,6 +6,7 @@ import UIKit
 struct HCGSentinelApp: App {
     @StateObject private var app = AppModel()
     @StateObject private var router = Router()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         HCGSentinelApp.configureAppearance()
@@ -25,6 +26,9 @@ struct HCGSentinelApp: App {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { router.open(section) }
                     }
                     #endif
+                }
+                .onChange(of: scenePhase) { phase in
+                    if phase == .background { app.sceneDidEnterBackground() }
                 }
                 .onOpenURL { url in
                     // Deep links navigate only. They can never start an operation.
@@ -81,5 +85,7 @@ struct ModelInjection: ViewModifier {
             .environmentObject(app.networkCheck)
             .environmentObject(app.securityLab)
             .environmentObject(app.connection)
+            .environmentObject(app.ping)
+            .environmentObject(app.localNetwork)
     }
 }

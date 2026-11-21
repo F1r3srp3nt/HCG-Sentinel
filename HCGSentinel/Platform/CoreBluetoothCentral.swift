@@ -95,3 +95,16 @@ final class CoreBluetoothCentral: NSObject, BluetoothCentral, CBCentralManagerDe
         delegate?.centralDidDiscover(advertisement)
     }
 }
+
+/// Bluetooth permission as iOS reports it now, read without creating a central manager (so it never prompts).
+enum BluetoothPermission {
+    static var current: BluetoothAuthorization {
+        switch CBCentralManager.authorization {
+        case .allowedAlways: return .allowed
+        case .denied: return .denied
+        case .restricted: return .restricted
+        case .notDetermined: return .notDetermined
+        @unknown default: return .notDetermined
+        }
+    }
+}

@@ -139,15 +139,73 @@ compliance and review) that this project has not been prepared or checked for.
 | Export | IPA, **development** method, for your registered devices |
 | Expected product | `HCGSentinel.app` or `HCGSentinelModern.app` in the archive, bundle ID `com.hcg.sentinel`, display name "Sentinel", minimum iOS 14.7 or 15.0 |
 
-### What Maker reads correctly (checked against its current `main`, commit 660fcc3)
+### Which Maker can build HCGSentinelModern (check this first)
+
+With an Xcode whose iOS range starts at 15.0, **Maker's `main` cannot build Sentinel at all**, and the version number
+does not tell you which Maker you have:
+
+| Maker revision | Labelled | With an Xcode that starts at iOS 15.0 |
+| --- | --- | --- |
+| `main`, 2842998 (18 Nov) | 0.3.1 | **Blocked.** Every output is judged with the first scheme (`HCGSentinel`, 14.7): all show "unavailable — HCGSentinel (scheme HCGSentinel) needs iOS 14.7 …", no scheme can be chosen, and the status reads "Required toolchain missing". |
+| branch `fix/sentinel-end-to-end`, 46205f0 (15 Nov, **not merged**) | 0.3.0 | **Works.** Scheme is chosen before outputs; `HCGSentinelModern` builds a verified Simulator app and an unsigned archive, and `HCGSentinel` is blocked with "Blocked by the deployment target". |
+
+Both rows were run through Maker's real Mobile Build Studio by Sentinel's CI (job "Through HCG Executable Maker",
+Xcode 26.6 with its SDK minimum raised to 15.0; see VALIDATION.md). Nothing in Sentinel causes the `main` failure; the fix
+has to be merged in Maker.
+
+How to tell on the Mac which one you have: the fixed build has an **Export diagnostics…** button and a
+**SCHEME COMPATIBILITY · SELECTED XCODE** section in Mobile Build Studio, and accepts
+`HCGExecutableMaker --mobile-diagnostics`. Maker's `main` has none of these.
+
+Until the fix is merged, run Maker from that branch on the Mac (needs the .NET 10 SDK; from Maker's README):
+
+```bash
+git clone --branch fix/sentinel-end-to-end https://github.com/F1r3srp3nt/HCG-Executable-Maker.git
+```
+
+```bash
+cd HCG-Executable-Maker && dotnet run --project src/HCG.ExecutableMaker.App
+```
+
+Or skip Maker and use `Tools/build.sh` below; it produces the same archive and IPA.
+
+In the fixed Maker: Mobile Build Studio › **Platform, scheme and output** › scheme **HCGSentinelModern** › output ›
+signing › confirm trust › build.
+
+### Is Maker building this revision?
+
+Maker builds a **copy** of the folder or ZIP taken at import, not the folder itself. When the copy no longer matches the
+original, the fixed Maker shows **HCG'S COPY IS NOT THE CURRENT SOURCE** with a **Refresh from source…** button, which
+copies it again without losing the project or the scheme choice. **Export diagnostics…** (or
+`HCGExecutableMaker --mobile-diagnostics --refresh`) reports the copy's state and the files that decide schemes and
+deployment targets. To compare by hand, hash the copy's files (`shasum -a 256`) against the table below.
+Each revision that adds files changes `project.pbxproj`; the two schemes have not changed. 0.1.0~beta2 (network
+tools, build number 2) changed the project again. Later commits that do not touch the Xcode project or schemes keep
+these values:
+
+| File | 0.1.0~beta2 | HCG header and Bluetooth beta | 03bc6e5 … 490858c (0.1.0~beta1) | 810c6f9 (older) |
+| --- | --- | --- | --- | --- |
+| `HCGSentinel.xcodeproj/project.pbxproj` | `df5e5a6f1750b870f6f9fd85cb8ae5ec63e03e798e6257387eac0054abc1e088` | `6616c5aecf787c2126b2a0d1c6acd68f2f253bfac11451a413d00a14316796d7` | `8a5c6cfbcd930074f61284538a64fd191bb31f2d3d665b05c5c66f73afe9e0b0` | `38d95aa724b0fad6f99806ff5ccf70d260af0f03433162a9b94ce0b0850b2545` |
+| `…/xcschemes/HCGSentinel.xcscheme` | `3cdf71c801f54e86d68b905672bcddf8d70cbf1ab597f00cc66b1ca08ad254a1` | same | same | same |
+| `…/xcschemes/HCGSentinelModern.xcscheme` | `1e95a1302043a8b80d5a092accd4f5286829a10809fe55aeeee385a8fe1f7b5a` | same | same | `bc3e14ca0cfdcf0f2609f053a33dcc7f9e604f2e1fabf070b26a4888d8f5af89` |
+
+A copy whose `project.pbxproj` shows an older value builds an older revision (`8a5c6cfb…` is what 0.1.0~beta1 was
+built from: no HCG header, no Bluetooth fixes, no network tools). Press **Refresh from source…**.
+
+A ZIP downloaded from GitHub produces the same files, so the same hashes apply. Any other value means the copy is from
+another revision: refresh it from an up-to-date folder or ZIP.
+
+### What Maker reads correctly (checked against its `main`, commit 660fcc3; the scheme handling is corrected on `fix/sentinel-end-to-end`)
 
 * `XcodeProjectAnalyzer` takes each target's settings on top of the project's, so it reports 14.7 for
   `HCGSentinel` (inherited) and 15.0 for `HCGSentinelModern` (set on the target). Correct.
 * Schemes: it reads the Archive action's target and configuration from the shared `.xcscheme` files. Both schemes
   name exactly one app target and archive with Release. Correct.
-* `MobileReadiness.AddDeploymentRange` now compares those targets with the selected Xcode's
+* `MobileReadiness.AddDeploymentRange` compares those targets with the selected Xcode's
   `SupportedTargets.iphoneos` range from `SDKSettings.json` and names the other scheme as a route when one is out of
-  range. That is the preflight proposed in the previous version of this document; no further change is needed for it.
+  range. **Correction:** an earlier version of this document said no further change was needed. That was wrong: up to
+  Maker 0.3.0 the check was only scheme-aware when called directly; the output list and the build engine called it
+  without the scheme, so the named route could not be taken. Still so on Maker's `main` (2842998, labelled 0.3.1); fixed on the unmerged branch `fix/sentinel-end-to-end` (see above).
 * The planner keeps result bundles and finds the archived app with `Products/Applications/*.app`, so the new
   `HCGSentinelModern.app` name needs no change in Maker.
 

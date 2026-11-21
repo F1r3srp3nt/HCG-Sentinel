@@ -60,7 +60,13 @@ def add(key, isa, **fields):
 
 
 def file_type(path):
-    return {".swift": "sourcecode.swift", ".plist": "text.plist.xml", ".xcassets": "folder.assetcatalog"}.get(path.suffix, "text")
+    return {".swift": "sourcecode.swift", ".plist": "text.plist.xml", ".xcassets": "folder.assetcatalog",
+            ".ttf": "file", ".webp": "file", ".md": "net.daringfireball.markdown"}.get(path.suffix, "text")
+
+
+# Files copied into the app bundle as-is: the asset catalog, plus the brand mark (original WebP), its font and the
+# font's licence (the SIL OFL asks for the licence to travel with the font).
+RESOURCE_SUFFIXES = {".xcassets", ".webp", ".ttf", ".txt"}
 
 
 def build_group(directory, key):
@@ -118,7 +124,7 @@ def main():
     app_frameworks = add("phase:app:frameworks", "PBXFrameworksBuildPhase", buildActionMask=2147483647,
                          files=[package_build], runOnlyForDeploymentPostprocessing=0)
     app_resources = add("phase:app:resources", "PBXResourcesBuildPhase", buildActionMask=2147483647,
-                        files=[build_file(r, p, "app-res") for r, p in app_files if p.suffix == ".xcassets"],
+                        files=[build_file(r, p, "app-res") for r, p in app_files if p.suffix in RESOURCE_SUFFIXES],
                         runOnlyForDeploymentPostprocessing=0)
     test_sources = add("phase:tests:sources", "PBXSourcesBuildPhase", buildActionMask=2147483647,
                        files=[build_file(r, p, "test-src") for r, p in test_files if p.suffix == ".swift"],
@@ -158,7 +164,7 @@ def main():
         "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
         "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": 1,
+        "CURRENT_PROJECT_VERSION": 2,
         "DEVELOPMENT_TEAM": "",
         "GENERATE_INFOPLIST_FILE": "NO",
         "INFOPLIST_FILE": f"{APP_DIR}/Resources/Info.plist",
@@ -187,13 +193,13 @@ def main():
                             files=[add("build:package:modern", "PBXBuildFile", productRef=modern_package_product)],
                             runOnlyForDeploymentPostprocessing=0)
     modern_resources = add("phase:modern:resources", "PBXResourcesBuildPhase", buildActionMask=2147483647,
-                           files=[build_file(r, p, "modern-res") for r, p in app_files if p.suffix == ".xcassets"],
+                           files=[build_file(r, p, "modern-res") for r, p in app_files if p.suffix in RESOURCE_SUFFIXES],
                            runOnlyForDeploymentPostprocessing=0)
 
     test_settings = {
         "BUNDLE_LOADER": "$(TEST_HOST)",
         "CODE_SIGN_STYLE": "Automatic",
-        "CURRENT_PROJECT_VERSION": 1,
+        "CURRENT_PROJECT_VERSION": 2,
         "DEVELOPMENT_TEAM": "",
         "GENERATE_INFOPLIST_FILE": "YES",
         "IPHONEOS_DEPLOYMENT_TARGET": DEPLOYMENT_TARGET,

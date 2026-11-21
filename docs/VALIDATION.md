@@ -5,6 +5,65 @@ What has actually been checked, and how. "Not done" means exactly that.
 Sources: CI runs on GitHub Actions. Complete logs and `.xcresult` bundles are attached to each *Archive check*
 run as artifacts: <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/workflows/archive.yml>
 
+## Beta2: 0.1.0~beta2 (21 November 2026)
+
+HCG Sentinel Unleashed 0.1.0~beta2, source commit `680cb3f`. Every result below comes from a CI run on that commit;
+none comes from a device. Details of what was built: [BETA2.md](BETA2.md).
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| SentinelCore on Linux | **Passed**: 256 tests, 0 skipped. Includes a real ICMP Echo round trip to 127.0.0.1 over an unprivileged ICMP socket (the runner was set to allow them, as iOS does), real TCP connect accepted/refused, the real resolver's "not found", Bluetooth watchdog and diagnostics, sweep scope rules | CI › SentinelCore tests (Linux) |
+| App and core tests in the iOS Simulator (scheme `HCGSentinel`, Xcode 26.6) | **Passed** ("TEST SUCCEEDED"). Core: 257 tests, 7 skipped (live local services or the mock node not reachable from that step). The real ICMP loopback test passed on Darwin (replies arrive with an IPv4 header there). App tests include the new Ping and Local Network wiring | CI › App build and tests (Xcode) |
+| Build matrix (both schemes) | **Passed**: legacy `HCGSentinel` (iOS 14.7) Debug and Release on Xcode 26.6; `HCGSentinelModern` (iOS 15.0) Debug and Release on Xcode 16.4 and 26.6; both targets side by side; modern Simulator tests and device archive on the newest Xcode; archive check (legacy on 16.4 and 26.6, modern on 26.6); through HCG Executable Maker `fix/sentinel-end-to-end`. Maker `main` fails as before (its known scheme bug; allowed to fail) | Build matrix and Archive check runs on `680cb3f` |
+| Simulator screenshots of the network tools | **Passed** (iPad and small iPhone, standard and largest accessibility text): dashboard, Network tools, Wi-Fi, Local Network and Ping render; Ping ran a real ICMP test to 127.0.0.1 in the Simulator: 5/5 answered, 0 % loss, 0.11 / 0.20 / 0.42 ms. Two display issues found (BETA2.md L11, L12) | CI › Simulator screenshots |
+| Real iOS arm64 Release build | **Passed**: `HCGSentinelModern`, Release, generic iOS device, Xcode 26.6; arm64 only; `minos 15.0` | Beta package run [44886884963](https://github.com/F1r3srp3nt/HCG-Sentinel/actions/runs/44886884963) |
+| Rootless package | **Passed**: `com.hakmicapitalgroup.hcgsentinel` `0.1.0~beta2` `iphoneos-arm64`, Name "HCG Sentinel Unleashed", every file under `/var/jb/Applications/HCGSentinelModern.app` | same run |
+| Identifiers | **Unchanged**: bundle ID `com.hcg.sentinel`, Home Screen name `Sentinel`, app 0.1.0 build 2 (beta1: build 1) | same run |
+| Dependencies | `firmware (>= 15.0), uikittools`, the same as beta1 | same run |
+| Signing and entitlements | ldid pseudo-signature (CodeDirectory present); **no entitlements**, the same as beta1 (the run fails if they differ) | Maker validator "[Passed] Entitlements: No entitlements embedded" |
+| Package scripts | `postinst` (`uicache -p`) and `postrm` (`uicache -u`) **byte-identical** to beta1; no other scripts | same run |
+| Maker's rootless validator, iOS 16.5 and 17.4 | **Passed**, including "0.1.0~beta2 is new and sorts above every published version (0.1.0~beta1)" | same run |
+| SHA-256 | `6d783bdb4d529fe6d0fb340b6ae04462484376fce87565b0922fcfedfd6e4e61`, 3,668,560 bytes | artifact `hcg-sentinel-unleashed-0.1.0-beta2-deb` |
+| HCG Repo inspector (HCG Repo `4aa36a0`) | **OK**: package passes package-level validation | same run |
+| HCG Repo importer dry run, as exported | Bytes **validated** for Candidate; HCG Repo would keep the version protected and not serve it until the owner's approval is recorded. (The script prints "REJECTED" for this case because nothing would be served; that is the intended state.) | same run |
+| HCG Repo importer dry run, throwaway copy with beta1's approval kept and a labelled hypothetical one for beta2 | **VALIDATED**: the importer accepts these exact bytes for Candidate. Nothing written to HCG Repo | same run |
+| Upgrade from beta1 and rollback (Linux dpkg sandbox, the uploaded artifact's bytes) | **Passed**: install beta1 → upgrade to beta2 → roll back to beta1 → upgrade again → remove (0 files left) → purge. `uicache -p` ran on each configure, `uicache -u` on removal; upgrades did not unregister the app | Beta package › dpkg sandbox |
+| Physical device | **Not tested.** No iPhone is reachable from CI or this session | [BETA_CHECKLIST.md](BETA_CHECKLIST.md) |
+| Publication | **Not done.** Awaiting the owner's approval ([release/0.1.0-beta2.md](release/0.1.0-beta2.md)) | — |
+
+## Beta: Maker route, header, Bluetooth day one, HCG Connect (21 November 2026)
+
+Runs on branch `claude/festive-shannon-1nfggt`: build matrix 44862482640, CI 44862482689, archive check 44862482520,
+HCG Connect readiness 44859350703.
+
+| Step | How | Result |
+| --- | --- | --- |
+| `HCGSentinelModern` resolves to iOS 15.0, app and tests | Build matrix: Debug and Release, device and Simulator, Xcode 16.4 and 26.6; newest-Xcode job reads `IPHONEOS_DEPLOYMENT_TARGET` of both modern targets | 15.0 for `HCGSentinelModern` and `HCGSentinelModernTests`; archived binary `minos 15.0`, `MinimumOSVersion 15.0`. |
+| Legacy `HCGSentinel` (iOS 14.7) preserved | Same matrix, Xcode 26.6; archive check with Xcode 16.4 and 26.6 | Builds and archives; `minos 14.7`. Unchanged. |
+| **Simulator tests** (`HCGSentinelModern`) | Xcode 26.6, iOS 26 Simulator, newest-Xcode job | **Passed**: 27 app tests (6 skipped: live network, mock node and Keychain tests that need a person or a local service), 230 SentinelCore tests. Legacy scheme's tests also passed (CI "App build and tests"). |
+| **Archive** (`HCGSentinelModern`, Release, generic iOS device) | `xcodebuild archive`, unsigned, Xcode 26.6 | **Succeeded**, arm64, `minos 15.0`. Unsigned: not installable. |
+| **Through Maker, `main` (2842998, "0.3.1")** | Maker's real Mobile Build Studio driven by its UI driver, Xcode 26.6 with the SDK minimum raised to 15.0 | **Blocked, as on the user's Mac**: every output "unavailable — HCGSentinel (scheme HCGSentinel) needs iOS 14.7 …", no scheme selectable, "Required toolchain missing". A Maker bug; see MAKER.md. |
+| **Through Maker, `fix/sentinel-end-to-end` (46205f0)** | Same | **Passed**: `HCGSentinelModern` Simulator app built and verified by Maker (24.0 MB); unsigned archive built and verified (`HCGSentinelModern.xcarchive`, 21.7 MB); deployment target reported "iOS 15.0 — within … iOS 15.0–26.5.99". `HCGSentinel` correctly blocked ("Blocked by the deployment target"). |
+| **Signed export (development IPA)** | Maker and `Tools/build.sh export` | **Not produced.** Maker: "iOS IPA (export from archive): unavailable — No Apple Development certificate in the keychain (no code-signing identities were found for this destination)". CI has no signing identity and no Mac is attached to this session. Finish on your Mac: MAKER.md and BETA_CHECKLIST.md step 0. |
+| **Physical device** | — | **Not tested.** No iPhone is reachable from this environment. Use BETA_CHECKLIST.md. |
+| Header on compact iPhone and large text | Screenshots on a 375-point iPhone SE Simulator at default, XXXL and accessibility XXL, plus iPad | Lockup fits and keeps proportions; status badge wraps below it. |
+| Moving light subtle; static without motion | Recording `dashboard-header.mp4`; screenshot with `-SentinelStaticMotion` (DEBUG flag driving the same `motionAllowed` switch as Reduce Motion and the Animations setting) | Light is narrower and dimmer and travels slowly; with motion off only the static divider shows. The system Reduce Motion switch itself was not toggled in a scripted run. |
+| Bluetooth states distinct | Screenshots with the DEBUG-only fixture radio: denied, Bluetooth off, scanning with nothing heard (after 15 s), scanning with results, device detail | Each has its own icon, title, explanation and action; denied offers iOS Settings; off offers Start. **Fixtures only.** |
+| Bluetooth status and signal history logic | `BluetoothScreenStatusTests` (Linux and macOS) and `BluetoothModelTests` (Simulator) | Passed. |
+| Results near the top on small phones | Same screenshots, reviewed | First review: one row visible and the signal value truncated. Fixed (status detail hidden while devices are heard, top footnote removed, signal value never truncates) and re-checked in the CI run above. |
+| Real Bluetooth discovery | Needs a physical iPhone | **Not tested.** |
+| HCG Connect | Read-only checks from GitHub Actions; repository and HCG records reviewed | No Sentinel client, product ID or entitlement contract exists. Issuer, endpoints and ES256 key confirmed; unknown client refused (`oauth_client_not_found`); `/me` without a token is 401. Registration request: HCG_CONNECT.md. Sentinel needs no account. |
+
+## Dashboard header: HCG Store lockup
+
+| What | How it was checked | Result |
+| --- | --- | --- |
+| Mark is HCG Store's own asset | SHA-256 of `HCGSentinel/Resources/Brand/hcg-mark-{240,480}.webp` against `web-hcg-store/public/brand/` (store commit 835ac1a) | Identical; alpha channel present; 240×109 and 480×218. |
+| Bundled and loads offline, font registered | `BrandLockupTests` (Simulator, hosted in the app) | Passed: both WebP files decode from the bundle with alpha and the 240:109 ratio; `SpaceGrotesk-SemiBold` is registered; the OFL licence is bundled. |
+| Fits the narrowest iPhone | `BrandLockupTests.testLockupFitsTheNarrowestIPhone` (320-point screen) and Simulator screenshots on an iPhone SE (375 points) | Passed; no clipping. |
+| Larger text sizes | Screenshots at XXXL and accessibility XXL | The lockup keeps its size (a brand mark); the status badge and text below scale and wrap. |
+| Moving light under the lockup | 8-second Simulator recording of the dashboard (CI artifact `dashboard-header.mp4`) | The light travels along the divider as before; still respects Reduce Motion and the Animation switch (unchanged code). |
+
 ## Repair: build targets, Bluetooth discovery, truthful capabilities
 
 | What | How it was checked | Result |
@@ -47,7 +106,7 @@ run as artifacts: <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/workflows/
 | Launched on simulator | Yes, by script, on iPhone and iPad simulators (iOS 26.2). Screens were not reviewed. |
 | Tested on a physical device | **No.** Neither the iPhone 13 Pro Max (iOS 17.4) nor the iPhone X (iOS 14.7). |
 | Run on iOS 14 or 15 at all | **No.** |
-| Built through HCG Executable Maker | **No.** Maker's command was read from its source and reproduced; Maker itself was not run. |
+| Built through HCG Executable Maker | **Yes, in CI**, with Maker's branch `fix/sentinel-end-to-end`: Simulator app and unsigned archive of `HCGSentinelModern`. Maker's `main` cannot select the scheme (see the beta section). |
 
 ## Archive inspection
 

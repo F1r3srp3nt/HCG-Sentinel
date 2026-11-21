@@ -11,6 +11,7 @@ final class BluetoothModel: ObservableObject {
     @Published private(set) var enabledInSettings = false
     @Published private(set) var scanNumber = 0
     @Published private(set) var labels: [UUID: String] = [:]
+    @Published private(set) var diagnostics = BluetoothDiagnostics()
     @Published var filter = BluetoothDeviceFilter()
 
     private let controller: BluetoothScanController
@@ -55,6 +56,10 @@ final class BluetoothModel: ObservableObject {
         controller.stop(reason: reason)
     }
 
+    func appDidEnterBackground() {
+        controller.appDidEnterBackground()
+    }
+
     func clear() {
         controller.clearResults()
         log.record(.bluetooth, "Discovered device list cleared")
@@ -62,6 +67,7 @@ final class BluetoothModel: ObservableObject {
 
     func tick() {
         controller.tick()
+        if diagnostics != controller.diagnostics { diagnostics = controller.diagnostics }
     }
 
     /// The list as shown: filtered and sorted.
@@ -105,6 +111,7 @@ final class BluetoothModel: ObservableObject {
         scanNumber = controller.scanNumber
         peripherals = controller.sortedPeripherals
         autoStopDeadline = controller.autoStopDeadline
+        diagnostics = controller.diagnostics
     }
 
     private func updateEnvironment() {

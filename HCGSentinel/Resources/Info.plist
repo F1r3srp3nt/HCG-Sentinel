@@ -55,7 +55,32 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Sentinel uses Bluetooth only when you start a scan in Bluetooth Explorer, to list nearby Bluetooth LE devices that are advertising.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sentinel connects to devices on your local network only when you send a test request to your selected endpoint or connect to your own radio analysis node.</string>
+	<string>Sentinel uses your local network only when you start something yourself: browsing for Bonjour services, sweeping a range you confirmed you are authorised to test, pinging an address, sending a test request, or connecting to your own radio node.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+		<string>_https._tcp</string>
+		<string>_ssh._tcp</string>
+		<string>_smb._tcp</string>
+		<string>_afpovertcp._tcp</string>
+		<string>_ipp._tcp</string>
+		<string>_ipps._tcp</string>
+		<string>_printer._tcp</string>
+		<string>_pdl-datastream._tcp</string>
+		<string>_airplay._tcp</string>
+		<string>_raop._tcp</string>
+		<string>_googlecast._tcp</string>
+		<string>_hap._tcp</string>
+		<string>_matter._tcp</string>
+		<string>_companion-link._tcp</string>
+		<string>_device-info._tcp</string>
+		<string>_workstation._tcp</string>
+		<string>_rfb._tcp</string>
+		<string>_sftp-ssh._tcp</string>
+		<string>_mqtt._tcp</string>
+		<string>_spotify-connect._tcp</string>
+		<string>_sleep-proxy._udp</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -66,6 +91,10 @@
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>SpaceGrotesk-SemiBold.ttf</string>
+	</array>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>

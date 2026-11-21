@@ -132,7 +132,7 @@ final class BluetoothScanControllerTests: XCTestCase {
         XCTAssertEqual(merged?.manufacturerID, 0x004c)
         XCTAssertEqual(controller.sortedPeripherals.count, 2)
         let unnamed = controller.sortedPeripherals.first { $0.id != id }
-        XCTAssertEqual(unnamed?.displayName, "Name not broadcast")
+        XCTAssertEqual(unnamed?.displayName, "Unknown device")
         XCTAssertEqual(unnamed?.signalBars, 1)
     }
 
@@ -250,7 +250,7 @@ final class BluetoothDiscoveryQualityTests: XCTestCase {
     func testNameSources() {
         let base = DiscoveredPeripheral(id: UUID(), rssi: nil, firstSeen: clock, lastSeen: clock, sightings: 1)
         XCTAssertEqual(base.nameSource(label: nil), .notBroadcast)
-        XCTAssertEqual(base.nameSource(label: nil).text, "Name not broadcast")
+        XCTAssertEqual(base.nameSource(label: nil).text, "Unknown device")
         XCTAssertTrue(base.nameSource(label: nil).explanation.contains("says nothing about"))
         var named = base
         named.name = "Cached"
@@ -384,5 +384,55 @@ final class BluetoothDiscoveryQualityTests: XCTestCase {
         XCTAssertEqual(ad.manufacturerData?.count, 64)
         XCTAssertEqual(ad.serviceData["FEAA"]?.count, 32)
         XCTAssertEqual(BluetoothAdvertisement.clean(String(repeating: "n", count: 200))?.count, 64)
+    }
+}
+
+final class BluetoothScreenStatusTests: XCTestCase {
+    private let now = Date(timeIntervalSince1970: 20_000)
+
+    private func status(_ state: BluetoothScanState, enabled: Bool = true, heard: Int = 0, listed: Int = 0) -> BluetoothScreenStatus {
+        BluetoothScreenStatus.derive(state: state, scanningEnabled: enabled, heardThisScan: heard, listed: listed, now: now)
+    }
+
+    func testEverySituationIsDistinct() {
+        let cases: [(BluetoothScreenStatus, BluetoothScreenStatus.Kind, BluetoothScreenStatus.Action)] = [
+            (status(.idle, enabled: false), .scanningSwitchOff, .turnOnScanningAndStart),
+            (status(.blocked(.disabledInSettings)), .scanningSwitchOff, .turnOnScanningAndStart),
+            (status(.blocked(.permissionDenied)), .permissionDenied, .openSystemSettings),
+            (status(.blocked(.restricted)), .restricted, .none),
+            (status(.blocked(.poweredOff)), .bluetoothOff, .start),
+            (status(.blocked(.unsupported)), .unsupported, .none),
+            (status(.blocked(.resetting)), .resetting, .start),
+            (status(.waitingForRadio), .starting, .stop),
+            (status(.scanning(since: now.addingTimeInterval(-3))), .scanningNothingYet, .stop),
+            (status(.scanning(since: now.addingTimeInterval(-40))), .scanningNoResults, .stop),
+            (status(.scanning(since: now.addingTimeInterval(-40)), heard: 2, listed: 5), .scanningWithResults, .stop),
+            (status(.idle, listed: 3), .stopped, .start),
+            (status(.idle), .stopped, .start)
+        ]
+        for (result, kind, action) in cases {
+            XCTAssertEqual(result.kind, kind, result.title)
+            XCTAssertEqual(result.primaryAction, action, result.title)
+            XCTAssertFalse(result.detail.isEmpty)
+        }
+        let problems = cases.map { $0.0 }.filter { $0.isProblem }.map { $0.kind }
+        XCTAssertEqual(Set(problems), [.permissionDenied, .restricted, .bluetoothOff, .unsupported, .resetting])
+        let titles = [status(.blocked(.permissionDenied)), status(.blocked(.poweredOff)), status(.scanning(since: now)),
+                      status(.scanning(since: now.addingTimeInterval(-40)))].map { $0.title }
+        XCTAssertEqual(Set(titles).count, titles.count, "denied, off, scanning and no-results read differently")
+        XCTAssertEqual(status(.scanning(since: now), heard: 1).title, "Scanning · 1 device heard")
+        XCTAssertEqual(status(.idle, listed: 3).title, "Stopped · 3 devices listed")
+    }
+
+    func testSignalHistoryKeepsTimesAndIsBounded() {
+        var device = DiscoveredPeripheral(id: UUID(), rssi: nil, firstSeen: now, lastSeen: now, sightings: 0)
+        for index in 0..<20 {
+            BluetoothScanController.merge(BluetoothAdvertisement(identifier: device.id, rssi: -50 - index), reading: -50 - index,
+                                          at: now.addingTimeInterval(Double(index)), scan: 1, into: &device)
+        }
+        XCTAssertEqual(device.rssiHistory.count, 12)
+        XCTAssertEqual(device.rssiHistory.last, RSSIReading(dBm: -69, at: now.addingTimeInterval(19)))
+        XCTAssertEqual(device.rssiHistory.map { $0.dBm }, device.recentRSSI)
+        XCTAssertEqual(device.nameSource(label: nil).text, "Unknown device")
     }
 }
