@@ -161,11 +161,15 @@ final class AppStateTests: XCTestCase {
         XCTAssertEqual(router.section, .bluetooth)
 
         router.layoutChanged(compact: false)
-        router.open(.capabilities)
+        router.open(.radio)
         XCTAssertNil(router.sheet)
-        XCTAssertEqual(router.section, .capabilities)
+        XCTAssertEqual(router.section, .radio)
         router.layoutChanged(compact: true)
         XCTAssertEqual(router.section, .dashboard, "a section without a tab falls back to the dashboard")
+        // 0.1.0~beta3 tabs: Command, Network, Wireless, Center, Capabilities; every other screen is one tap from the Center.
+        XCTAssertEqual(Router.tabSections, [.dashboard, .network, .bluetooth, .center, .capabilities])
+        router.open(.deviceSecurity)
+        XCTAssertEqual(router.sheet, .deviceSecurity, "a link to a non-tab screen opens it as a sheet, like an internal tap")
     }
 
     func testHelperPairingKeyValidation() {
