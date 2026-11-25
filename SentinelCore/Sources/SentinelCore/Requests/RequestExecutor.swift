@@ -2,6 +2,9 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+#if canImport(Security)
+import Security
+#endif
 
 public enum ResponseBodyFormat: String, CaseIterable, Equatable {
     case text = "Text"
@@ -42,6 +45,80 @@ public enum ResponseFormatter {
     }
 }
 
+/// What TLS the connection used, as the system reported it. Absent for plain HTTP or when iOS reported nothing.
+public struct TLSDetails: Equatable {
+    /// For example "TLS 1.3".
+    public var protocolVersion: String?
+    /// IANA name when known, otherwise the hexadecimal code.
+    public var cipherSuite: String?
+    /// Subject summaries of the presented chain, leaf first (at most 4).
+    public var certificates: [String]
+    /// The system's trust decision for the chain (it decides whether the request succeeds at all).
+    public var trusted: Bool?
+
+    public init(protocolVersion: String? = nil, cipherSuite: String? = nil, certificates: [String] = [], trusted: Bool? = nil) {
+        self.protocolVersion = protocolVersion
+        self.cipherSuite = cipherSuite
+        self.certificates = certificates
+        self.trusted = trusted
+    }
+
+    public static func protocolName(_ code: UInt16) -> String {
+        switch code {
+        case 0x0304: return "TLS 1.3"
+        case 0x0303: return "TLS 1.2"
+        case 0x0302: return "TLS 1.1 (deprecated)"
+        case 0x0301: return "TLS 1.0 (deprecated)"
+        default: return String(format: "TLS 0x%04X", code)
+        }
+    }
+
+    public static func cipherName(_ code: UInt16) -> String {
+        let known: [UInt16: String] = [
+            0x1301: "TLS_AES_128_GCM_SHA256", 0x1302: "TLS_AES_256_GCM_SHA384", 0x1303: "TLS_CHACHA20_POLY1305_SHA256",
+            0xC02B: "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", 0xC02C: "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+            0xC02F: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", 0xC030: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+            0xCCA8: "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256", 0xCCA9: "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+        ]
+        return known[code] ?? String(format: "0x%04X", code)
+    }
+}
+
+/// Where the time went, from the system's task metrics. Each value is nil when that phase did not happen
+/// (for example a reused connection has no DNS, connect or TLS phase).
+public struct RequestTiming: Equatable {
+    public var dns: TimeInterval?
+    public var connect: TimeInterval?
+    public var tls: TimeInterval?
+    /// From sending the request to the first response byte.
+    public var firstByte: TimeInterval?
+    public var reusedConnection: Bool
+
+    public init(dns: TimeInterval? = nil, connect: TimeInterval? = nil, tls: TimeInterval? = nil, firstByte: TimeInterval? = nil, reusedConnection: Bool = false) {
+        self.dns = dns
+        self.connect = connect
+        self.tls = tls
+        self.firstByte = firstByte
+        self.reusedConnection = reusedConnection
+    }
+}
+
+/// One sent request in the session history: what was sent (redacted) and what came back. Kept in memory only.
+public struct RequestHistoryEntry: Equatable, Identifiable {
+    public let id: Int
+    public let at: Date
+    public let method: String
+    /// User info and sensitive query values redacted.
+    public let url: String
+    /// Header names; sensitive values are never kept.
+    public let headerNames: [String]
+    public let bodyBytes: Int
+    public let outcome: String
+    public let statusCode: Int?
+    public let duration: TimeInterval?
+    public let tls: TLSDetails?
+}
+
 public struct HTTPResponseRecord: Equatable {
     public let statusCode: Int
     public let headers: [PreparedRequest.Header]
@@ -52,9 +129,13 @@ public struct HTTPResponseRecord: Equatable {
     public let startedAt: Date
     /// Wall-clock time from Send until the complete response arrived.
     public let duration: TimeInterval
+    public var tls: TLSDetails?
+    public var timing: RequestTiming?
 
     public init(statusCode: Int, headers: [PreparedRequest.Header], body: Data, bodyTruncated: Bool,
-                totalBodyBytes: Int, startedAt: Date, duration: TimeInterval) {
+                totalBodyBytes: Int, startedAt: Date, duration: TimeInterval, tls: TLSDetails? = nil, timing: RequestTiming? = nil) {
+        self.tls = tls
+        self.timing = timing
         self.statusCode = statusCode
         self.headers = headers
         self.body = body
@@ -102,6 +183,9 @@ public protocol HTTPTransport: AnyObject {
 public final class URLSessionHTTPTransport: NSObject, HTTPTransport, URLSessionTaskDelegate {
     public static let maxDisplayedBodyBytes = 1_048_576
     private var session: URLSession!
+    /// Per-task TLS and timing, written and read on the session's serial delegate queue only.
+    private var tlsByTask: [Int: TLSDetails] = [:]
+    private var timingByTask: [Int: RequestTiming] = [:]
 
     public override init() {
         super.init()
@@ -130,7 +214,11 @@ public final class URLSessionHTTPTransport: NSObject, HTTPTransport, URLSessionT
         }
         urlRequest.httpBody = request.body
         let started = Date()
-        let task = session.dataTask(with: urlRequest) { data, response, error in
+        var taskID = -1
+        let task = session.dataTask(with: urlRequest) { [weak self] data, response, error in
+            // Runs on the delegate queue after the metrics callback for this task.
+            let tls = self?.tlsByTask.removeValue(forKey: taskID)
+            let timing = self?.timingByTask.removeValue(forKey: taskID)
             let result: Result<HTTPResponseRecord, RequestExecutionError>
             if let error = error {
                 let code = (error as NSError).code
@@ -150,15 +238,59 @@ public final class URLSessionHTTPTransport: NSObject, HTTPTransport, URLSessionT
                 result = .success(HTTPResponseRecord(statusCode: http.statusCode, headers: headers,
                                                      body: Data(body.prefix(limit)), bodyTruncated: body.count > limit,
                                                      totalBodyBytes: body.count, startedAt: started,
-                                                     duration: Date().timeIntervalSince(started)))
+                                                     duration: Date().timeIntervalSince(started),
+                                                     tls: request.url.scheme?.lowercased() == "https" ? tls : nil, timing: timing))
             } else {
                 result = .failure(.notHTTP)
             }
             DispatchQueue.main.async { completion(result) }
         }
+        taskID = task.taskIdentifier
         task.resume()
         return TaskHandle(task)
     }
+
+    #if canImport(Darwin)
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+        guard let transaction = metrics.transactionMetrics.last else { return }
+        func span(_ a: Date?, _ b: Date?) -> TimeInterval? {
+            guard let a = a, let b = b else { return nil }
+            return b.timeIntervalSince(a)
+        }
+        timingByTask[task.taskIdentifier] = RequestTiming(
+            dns: span(transaction.domainLookupStartDate, transaction.domainLookupEndDate),
+            connect: span(transaction.connectStartDate, transaction.connectEndDate),
+            tls: span(transaction.secureConnectionStartDate, transaction.secureConnectionEndDate),
+            firstByte: span(transaction.requestStartDate, transaction.responseStartDate),
+            reusedConnection: transaction.isReusedConnection)
+        if #available(iOS 13.0, macOS 10.15, *) {
+            var details = tlsByTask[task.taskIdentifier] ?? TLSDetails()
+            if let version = transaction.negotiatedTLSProtocolVersion { details.protocolVersion = TLSDetails.protocolName(version.rawValue) }
+            if let suite = transaction.negotiatedTLSCipherSuite { details.cipherSuite = TLSDetails.cipherName(suite.rawValue) }
+            tlsByTask[task.taskIdentifier] = details
+        }
+    }
+
+    /// Records the presented chain and the system's own trust decision, then lets the system handle trust as usual.
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
+                           completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust, let trust = challenge.protectionSpace.serverTrust {
+            var details = tlsByTask[task.taskIdentifier] ?? TLSDetails()
+            var chain: [SecCertificate] = []
+            if #available(iOS 15.0, macOS 12.0, *) {
+                chain = (SecTrustCopyCertificateChain(trust) as? [SecCertificate]) ?? []
+            } else {
+                for index in 0..<SecTrustGetCertificateCount(trust) {
+                    if let certificate = SecTrustGetCertificateAtIndex(trust, index) { chain.append(certificate) }
+                }
+            }
+            details.certificates = chain.prefix(4).compactMap { SecCertificateCopySubjectSummary($0) as String? }
+            details.trusted = SecTrustEvaluateWithError(trust, nil)
+            tlsByTask[task.taskIdentifier] = details
+        }
+        completionHandler(.performDefaultHandling, nil)
+    }
+    #endif
 
     public func urlSession(_ session: URLSession, task: URLSessionTask,
                            willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
@@ -197,6 +329,25 @@ public final class RequestComposer {
 
     public private(set) var state: State = .idle {
         didSet { onChange?() }
+    }
+    /// Requests sent in this session, newest first (at most `historyLimit`). Never stored on disk.
+    public private(set) var history: [RequestHistoryEntry] = []
+    public static let historyLimit = 25
+    private var historyCounter = 0
+
+    public func clearHistory() {
+        history.removeAll()
+        onChange?()
+    }
+
+    private func remember(_ prepared: PreparedRequest, at: Date, outcome: String, response: HTTPResponseRecord?) {
+        historyCounter += 1
+        let entry = RequestHistoryEntry(id: historyCounter, at: at, method: prepared.method.rawValue,
+                                        url: redactor.url(prepared.url.absoluteString),
+                                        headerNames: prepared.headers.map { $0.name }, bodyBytes: prepared.body?.count ?? 0,
+                                        outcome: outcome, statusCode: response?.statusCode, duration: response?.duration, tls: response?.tls)
+        history.insert(entry, at: 0)
+        if history.count > RequestComposer.historyLimit { history.removeLast(history.count - RequestComposer.historyLimit) }
     }
     public var onChange: (() -> Void)?
     /// Called once per HTTP response received from the endpoint.
@@ -243,17 +394,20 @@ public final class RequestComposer {
         let current = generation
         let target = redactor.url(prepared.url.absoluteString)
         log?.record(.request, "Sent \(prepared.method.rawValue) \(target) with \(prepared.headers.count) header(s), \(prepared.body?.count ?? 0)-byte body")
-        state = .sending(startedAt: Date())
+        let sentAt = Date()
+        state = .sending(startedAt: sentAt)
         inFlight = transport.send(prepared, timeout: timeout) { [weak self] result in
             guard let self = self, self.generation == current, self.isSending else { return }
             self.inFlight = nil
             switch result {
             case .success(let response):
                 self.log?.record(.request, "Response \(response.statusCode) from \(target) in \(Int((response.duration * 1000).rounded())) ms, \(response.totalBodyBytes) bytes")
+                self.remember(prepared, at: sentAt, outcome: "HTTP \(response.statusCode)", response: response)
                 self.state = .completed(response)
                 self.onResponse?(response)
             case .failure(let error):
                 self.log?.record(.request, "Request to \(target) failed: \(error.userMessage)", severity: .warning)
+                self.remember(prepared, at: sentAt, outcome: error.userMessage, response: nil)
                 self.state = .failed(.execution(error))
             }
         }

@@ -1,8 +1,10 @@
-# HCG Sentinel
+# HCG Sentinel Unleashed
 
 A native SwiftUI iPhone and iPad app (iOS 14.7+) for **authorised testing of your own devices, networks and
-services**: capture-file inspection, Bluetooth LE discovery, a controlled test-request composer, and a client for an
-external radio-analysis node.
+services**: Bluetooth LE discovery, Wi-Fi and local network diagnostics, ping, capture-file inspection, a controlled
+test-request composer, and a client for an external radio-analysis node. Its Home Screen name is **Sentinel**; it is
+distributed for rootless jailbreaks through HCG Repo Candidate as `com.hakmicapitalgroup.hcgsentinel` (bundle ID
+`com.hcg.sentinel`). Current beta: [docs/BETA2.md](docs/BETA2.md).
 
 Sentinel is built around not overstating what it can do. Every capability is tracked on four separate facts —
 implemented, supported here, enabled by you, and **verified by a real operation** — and the app shows fabricated data
@@ -16,6 +18,9 @@ only in a clearly labelled Preview mode.
 | **Dashboard** | HCG SENTINEL banner, device and connection status, verified-capability indicators, active operations, recent activity, quick access, Stop All Operations. | Invent telemetry, detections or connected equipment. |
 | **Check My Network** | Bounded DNS, HTTPS, captive-portal, proxy and Wi-Fi checks of the current connection; evidence, time, limitations and remediation per finding; cancel at any time. | Call a network safe, or treat a connection failure as an attack. |
 | **Security Lab** | Secret Scanner (folders and archives on the device, redacted findings, suppression, safe archive handling), Exposure Check (reachability, TLS, HTTPS redirect, headers and version banners of URLs you are authorised to test, with execution-side scope control), Authentication Defense Lab (bounded lockout, throttling, error-message and logging checks against a bundled loopback login service). Shared report with scope, evidence, severity and confidence shown separately, limitations and redacted export. | Test discovered credentials, exploit anything, guess credentials, scan hosts you did not enter, or test a real login service. HCG Server execution is designed, not available. |
+| **Wi-Fi** | Current connection: interface, IPv4 address and subnet, IPv6, default gateway, IPv4/IPv6/DNS availability, a session log of connection changes. SSID/BSSID only if iOS provides them. | List nearby networks (iOS gives apps no way to), show DNS server addresses, or guess anything iOS withholds. |
+| **Local Network** | Bonjour browsing with mDNS resolution; an authorised sweep (ICMP echo, then a TCP connect to 80/443/22/445) of a private range of at most 254 addresses on a network the iPhone is on, after you confirm you may test it. Verified answers and "no response" kept apart. | Sweep public ranges, anything larger than a /24, or anything without confirmation; call a silent address empty. |
+| **Ping** | Real ICMP Echo (unprivileged ICMP socket) or a TCP connect test that is labelled as such; 1–100 probes, ≥1 s apart; loss, min/avg/max, DNS and route errors; session history. | Flood, run in the background, or call a TCP test a ping. |
 | **Network Inspector** | Shows the app's own network path and addresses. Imports pcap/pcapng through the document picker and decodes Ethernet, VLAN, ARP, IPv4/IPv6, TCP, UDP, ICMP with size and resource limits. | Capture this device's traffic or decrypt TLS. Imported files are labelled as such. |
 | **Bluetooth Explorer** | User-started Core Bluetooth discovery. Each device shows where its name comes from (your label, the advertised name, the name iOS reports, or "Name not broadcast"), its advertised services, service data and manufacturer data (with registry names for common values), signal strength with the last readings, and when it was first and last heard, in this scan or an earlier one. Search, filters, sorting and your own labels; permission and radio states explained. | Connect to devices, see traffic between other devices, estimate distance, identify a device's owner or real identity, or call anything malicious. |
 | **Radio Lab** | Connects to an external node with a pairing key over the authenticated Sentinel Node Protocol v2; spectrum and nearby Wi-Fi scans when the node offers them. | Receive or transmit RF on the iPhone, or show anything before the node authenticates. |

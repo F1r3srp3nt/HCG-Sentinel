@@ -10,12 +10,17 @@ public final class CapabilityRegistry {
     public private(set) var states: [CapabilityState]
     public var onChange: (() -> Void)?
     private let now: () -> Date
+    private let evidenceStore: CapabilityEvidenceStore?
 
-    public init(descriptors: [CapabilityDescriptor] = CapabilityCatalog.all, now: @escaping () -> Date = Date.init) {
+    public init(descriptors: [CapabilityDescriptor] = CapabilityCatalog.all, evidenceStore: CapabilityEvidenceStore? = nil,
+                now: @escaping () -> Date = Date.init) {
         self.now = now
+        self.evidenceStore = evidenceStore
+        let history = evidenceStore?.load() ?? [:]
         self.states = descriptors.map {
             CapabilityState(descriptor: $0, environment: CapabilityCatalog.initialEnvironment(for: $0.id),
-                            userEnabled: false, verification: .unverified)
+                            userEnabled: false, verification: .unverified,
+                            lastSuccess: history[$0.id]?.lastSuccess, lastFailure: history[$0.id]?.lastFailure)
         }
     }
 
@@ -50,13 +55,42 @@ public final class CapabilityRegistry {
     public func recordVerified(_ id: CapabilityID, evidence: String) -> Bool {
         guard let current = state(id), current.descriptor.implementation == .included, current.userEnabled else { return false }
         if case .unsupported = current.environment { return false }
-        mutate(id) { $0.verification = .verified(at: now(), evidence: evidence) }
+        let at = now()
+        mutate(id) {
+            $0.verification = .verified(at: at, evidence: evidence)
+            $0.lastSuccess = CapabilityEvidence(at: at, text: evidence)
+        }
+        persist()
         return true
     }
 
     public func recordFailure(_ id: CapabilityID, reason: String) {
         guard let current = state(id), current.descriptor.implementation == .included else { return }
-        mutate(id) { $0.verification = .failed(at: now(), reason: reason) }
+        let at = now()
+        mutate(id) {
+            $0.verification = .failed(at: at, reason: reason)
+            $0.lastFailure = CapabilityEvidence(at: at, text: reason)
+        }
+        persist()
+    }
+
+    /// Forgets the stored history (not this session's verification).
+    public func clearHistory() {
+        for index in states.indices {
+            states[index].lastSuccess = nil
+            states[index].lastFailure = nil
+        }
+        evidenceStore?.save([:])
+        onChange?()
+    }
+
+    private func persist() {
+        guard let store = evidenceStore else { return }
+        var history: [CapabilityID: CapabilityEvidenceStore.Entry] = [:]
+        for state in states where state.lastSuccess != nil || state.lastFailure != nil {
+            history[state.id] = .init(lastSuccess: state.lastSuccess, lastFailure: state.lastFailure)
+        }
+        store.save(history)
     }
 
     public func resetVerification(_ id: CapabilityID) {

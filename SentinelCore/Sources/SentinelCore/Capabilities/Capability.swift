@@ -44,6 +44,14 @@ public enum CapabilityID: String, CaseIterable, Codable {
     case satelliteAccess
     case radioModification
     case watchScanning
+    // Added in 0.1.0~beta3 for features that already existed without an entry, and for new ones.
+    case wifiConnectionInfo
+    case icmpPing
+    case localDiscovery
+    case deviceSecurity
+    case reportImport
+    case deviceLinkPairing
+    case serverHealth
 }
 
 /// Whether Sentinel ships working code for the capability.
@@ -110,6 +118,11 @@ public struct CapabilityState: Equatable, Identifiable {
     public var environment: EnvironmentSupport
     public var userEnabled: Bool
     public var verification: VerificationStatus
+    /// The last successful operation recorded on this device, in this or an earlier session. It is history only:
+    /// `verification` (this session) alone decides whether the capability counts as verified now.
+    public var lastSuccess: CapabilityEvidence?
+    /// The last failure recorded on this device.
+    public var lastFailure: CapabilityEvidence?
 
     public var id: CapabilityID { descriptor.id }
 

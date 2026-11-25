@@ -11,6 +11,7 @@ final class BluetoothModel: ObservableObject {
     @Published private(set) var enabledInSettings = false
     @Published private(set) var scanNumber = 0
     @Published private(set) var labels: [UUID: String] = [:]
+    @Published private(set) var diagnostics = BluetoothDiagnostics()
     @Published var filter = BluetoothDeviceFilter()
 
     private let controller: BluetoothScanController
@@ -55,6 +56,10 @@ final class BluetoothModel: ObservableObject {
         controller.stop(reason: reason)
     }
 
+    func appDidEnterBackground() {
+        controller.appDidEnterBackground()
+    }
+
     func clear() {
         controller.clearResults()
         log.record(.bluetooth, "Discovered device list cleared")
@@ -62,6 +67,7 @@ final class BluetoothModel: ObservableObject {
 
     func tick() {
         controller.tick()
+        if diagnostics != controller.diagnostics { diagnostics = controller.diagnostics }
     }
 
     /// The list as shown: filtered and sorted.
@@ -105,6 +111,7 @@ final class BluetoothModel: ObservableObject {
         scanNumber = controller.scanNumber
         peripherals = controller.sortedPeripherals
         autoStopDeadline = controller.autoStopDeadline
+        diagnostics = controller.diagnostics
     }
 
     private func updateEnvironment() {
@@ -455,6 +462,7 @@ final class RequestModel: ObservableObject {
     @Published private(set) var remoteConnectionsEnabled = false
     @Published private(set) var previewMode = false
     @Published var bodyFormat: ResponseBodyFormat = .text
+    @Published private(set) var history: [RequestHistoryEntry] = []
 
     private let composer: RequestComposer
     private let registry: CapabilityRegistry
@@ -466,6 +474,7 @@ final class RequestModel: ObservableObject {
         composer.onChange = { [weak self] in
             guard let self = self else { return }
             self.state = self.composer.state
+            self.history = self.composer.history
             if case .failed(.execution(let error)) = self.composer.state, error != .cancelled {
                 self.registry.recordFailure(.requestComposer, reason: error.userMessage)
             }
@@ -478,6 +487,11 @@ final class RequestModel: ObservableObject {
     }
 
     var isSending: Bool { composer.isSending }
+
+    func clearHistory() {
+        composer.clearHistory()
+        history = []
+    }
     var canSend: Bool { remoteConnectionsEnabled && !previewMode && !endpoints.isEmpty && !isSending }
 
     func apply(_ settings: SentinelSettings) {

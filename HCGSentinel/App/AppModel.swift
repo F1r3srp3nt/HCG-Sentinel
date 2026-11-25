@@ -20,7 +20,7 @@ final class AppModel: ObservableObject {
     let registry: CapabilityRegistry
     let log: ActivityLog
     let operations = OperationsCoordinator()
-    let connection = ConnectionMonitor()
+    let connection: ConnectionMonitor
     let captureStore: CaptureStore
     let diagnosticFile: DiagnosticLogFile
 
@@ -31,8 +31,12 @@ final class AppModel: ObservableObject {
     let helper: HelperModel
     let networkCheck: NetworkCheckModel
     let securityLab: SecurityLabModel
+    let ping: PingModel
+    let localNetwork: LocalNetworkModel
     /// HCG Device Link (Connected Devices). Contacts a server only while Remote connections is on.
     let devices: ConnectedDevicesModel
+    /// Device security, imported reports, network history and capability self-tests.
+    let intelligence: IntelligenceModel
 
     private let store: SettingsStore
     private var timer: Timer?
@@ -43,23 +47,32 @@ final class AppModel: ObservableObject {
         self.settings = loaded
 
         // Locals first, so nothing reads `self` before every stored property is set.
-        let registry = CapabilityRegistry()
-        let log = ActivityLog()
-        self.registry = registry
-        self.log = log
-
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
+        let registry = CapabilityRegistry(evidenceStore: CapabilityEvidenceStore(url: support.appendingPathComponent("Capabilities/evidence.json")))
+        let log = ActivityLog()
+        let connection = ConnectionMonitor()
+        self.registry = registry
+        self.log = log
+        self.connection = connection
         let captureStore = CaptureStore(directory: support.appendingPathComponent("Captures", isDirectory: true))
         self.captureStore = captureStore
         diagnosticFile = DiagnosticLogFile(url: support.appendingPathComponent("Diagnostics/sentinel-activity.log"))
 
-        bluetooth = BluetoothModel(central: CoreBluetoothCentral(), log: log, registry: registry)
+        var central: BluetoothCentral = CoreBluetoothCentral()
+        #if DEBUG
+        // Screenshot checks in CI only: a fake radio, because the Simulator has none.
+        if let fixture = BluetoothFixtureCentral.fromLaunchArguments() { central = fixture }
+        #endif
+        bluetooth = BluetoothModel(central: central, log: log, registry: registry)
         network = NetworkModel(store: captureStore, log: log, registry: registry)
         radio = RadioModel(transport: WebSocketNodeTransport(), log: log, registry: registry)
         requests = RequestModel(transport: URLSessionHTTPTransport(), log: log, registry: registry)
         helper = HelperModel(log: log, registry: registry)
         networkCheck = NetworkCheckModel(probe: PlatformNetworkProbe(), log: log, registry: registry)
+        ping = PingModel(log: log, registry: registry)
+        localNetwork = LocalNetworkModel(log: log, registry: registry)
+        intelligence = IntelligenceModel(registry: registry, log: log, support: support, connection: connection)
         securityLab = SecurityLabModel(store: SecurityReportStore(directory: support.appendingPathComponent("SecurityLab/Reports", isDirectory: true)),
                                        log: log, registry: registry)
 
@@ -78,12 +91,38 @@ final class AppModel: ObservableObject {
         registerOperations()
         for model in [bluetooth.objectWillChange, network.objectWillChange, radio.objectWillChange,
                       requests.objectWillChange, helper.objectWillChange, networkCheck.objectWillChange,
-                      securityLab.objectWillChange] {
+                      securityLab.objectWillChange, ping.objectWillChange, localNetwork.objectWillChange] {
             model.receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshOperations() }.store(in: &cancellables)
         }
 
         connection.onFirstUpdate = { [weak self] in
             self?.registry.recordVerified(.connectionDiagnostics, evidence: "iOS delivered a network path update for this app")
+            if let wifi = ConnectionMonitor.ipv4Networks().first(where: { $0.interface.hasPrefix("en") }) {
+                self?.registry.recordVerified(.wifiConnectionInfo, evidence: "Read \(wifi.interface) IPv4 address and /\(wifi.network.prefix) subnet from the system")
+            }
+        }
+        networkCheck.onFinished = { [weak self] report in
+            guard let self = self else { return }
+            self.intelligence.record(.networkCheck(report, connection: self.connection.snapshot?.headline ?? "unknown"))
+        }
+        ping.onFinished = { [weak self] run in
+            self?.intelligence.record(.ping(target: run.host, configuration: run.configuration, results: run.results,
+                                            at: run.finishedAt ?? Date(), failure: run.failure))
+        }
+        // ConnectedDevicesModel is main-actor isolated, so its publishers are read from a main-actor task.
+        let devices = self.devices
+        Task { @MainActor [weak self] in
+            let link = devices.$link.sink { link in
+                if case .connected = link {
+                    self?.registry.recordVerified(.deviceLinkPairing, evidence: "The paired HCG Server accepted this device's Device Link connection")
+                }
+            }
+            let health = devices.$health.sink { health in
+                if case .loaded = health {
+                    self?.registry.recordVerified(.serverHealth, evidence: "The paired HCG Server answered its diagnostics request")
+                }
+            }
+            self?.deviceSubscriptions = [link, health]
         }
 
         applySettings(loaded, initial: true)
@@ -92,6 +131,7 @@ final class AppModel: ObservableObject {
     }
 
     private var cancellables = Set<AnyCancellable>()
+    private var deviceSubscriptions: [AnyCancellable] = []
 
     /// Called once when the first scene becomes active.
     func start() {
@@ -105,6 +145,20 @@ final class AppModel: ObservableObject {
         devices.start()
         log.record(.system, "Sentinel started. All active collection is off until you start it.")
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+    }
+
+    /// iOS suspends Sentinel shortly after it leaves the screen. Anything that probes or listens is stopped here, with
+    /// a reason in the activity log, rather than left to fail silently in the background.
+    func sceneDidEnterBackground() {
+        bluetooth.appDidEnterBackground()
+        if ping.isRunning {
+            log.record(.network, "Ping stopped because Sentinel moved to the background")
+            ping.stop()
+        }
+        if localNetwork.isActive {
+            log.record(.network, "Local network discovery stopped because Sentinel moved to the background")
+            localNetwork.stopAll()
+        }
     }
 
     private func tick() {
@@ -128,6 +182,12 @@ final class AppModel: ObservableObject {
         operations.register(OperationHandle(id: "helper", title: "Helper session",
                                             isActive: { [helper] in helper.state.isActive },
                                             stop: { [helper] in helper.disconnect() }))
+        operations.register(OperationHandle(id: "ping", title: "Ping",
+                                            isActive: { [ping] in ping.isRunning },
+                                            stop: { [ping] in ping.stop() }))
+        operations.register(OperationHandle(id: "localnetwork", title: "Local network discovery",
+                                            isActive: { [localNetwork] in localNetwork.isActive },
+                                            stop: { [localNetwork] in localNetwork.stopAll() }))
         operations.register(OperationHandle(id: "networkcheck", title: "Network check",
                                             isActive: { [networkCheck] in networkCheck.isRunning },
                                             stop: { [networkCheck] in networkCheck.cancel() }))
@@ -212,6 +272,11 @@ final class AppModel: ObservableObject {
         registry.setUserEnabled(.exposureCheck, settings.remoteConnectionsEnabled)
         registry.setUserEnabled(.authDefenseLab, true)
         registry.setUserEnabled(.serverAssessments, false)
+        for id: CapabilityID in [.wifiConnectionInfo, .icmpPing, .localDiscovery, .deviceSecurity, .reportImport] {
+            registry.setUserEnabled(id, true)
+        }
+        registry.setUserEnabled(.deviceLinkPairing, settings.remoteConnectionsEnabled)
+        registry.setUserEnabled(.serverHealth, settings.remoteConnectionsEnabled)
     }
 
     // MARK: Diagnostics
@@ -230,6 +295,8 @@ final class AppModel: ObservableObject {
     func clearActivity() {
         log.clear()
     }
+
+    var importedReportCount: Int { intelligence.importedReports.count }
 
     func capabilityState(_ id: CapabilityID) -> CapabilityState? {
         capabilities.first { $0.id == id }
@@ -261,7 +328,12 @@ final class Router: ObservableObject {
     @Published var pendingReport: ReportLink?
     var isCompact = true
 
-    static let tabSections: [SentinelSection] = [.dashboard, .network, .bluetooth, .radio, .requests]
+    /// Command Center, Network Intelligence, Wireless (Bluetooth), the Security Intelligence Center (every screen) and
+    /// the Capability Center. Every other destination opens from the Center, from links, or as a sheet.
+    static let tabSections: [SentinelSection] = [.dashboard, .network, .bluetooth, .center, .capabilities]
+    /// iPad sidebar: the main areas; the Center lists every other screen.
+    static let sidebarSections: [SentinelSection] = [.dashboard, .center, .network, .networkCheck, .securityLab, .deviceSecurity,
+                                                     .bluetooth, .radio, .requests, .reports, .devices, .capabilities, .settings]
 
     /// Navigates only; never starts an operation.
     func open(_ target: SentinelSection) {
@@ -297,6 +369,7 @@ final class Router: ObservableObject {
 }
 
 extension SentinelSection {
+    /// SF Symbols available on iOS 14.
     var icon: String {
         switch self {
         case .dashboard: return "square.grid.2x2"
@@ -309,21 +382,76 @@ extension SentinelSection {
         case .devices: return "laptopcomputer.and.iphone"
         case .capabilities: return "checkmark.seal"
         case .settings: return "gearshape"
+        case .center: return "circle.grid.cross"
+        case .wifi: return "wifi"
+        case .ping: return "waveform.path.ecg"
+        case .localNetwork: return "point.3.connected.trianglepath.dotted"
+        case .deviceSecurity: return "lock.shield"
+        case .captureInspector: return "doc.text.magnifyingglass"
+        case .secretScanner: return "key"
+        case .exposureCheck: return "globe"
+        case .authLab: return "person.badge.shield.checkmark"
+        case .externalNodes: return "server.rack"
+        case .reports: return "doc.richtext"
+        case .ecosystem: return "square.grid.3x3"
+        case .serverHealth: return "heart.text.square"
         }
     }
 
     var shortTitle: String {
         switch self {
-        case .dashboard: return "Dashboard"
+        case .dashboard: return "Command"
         case .network: return "Network"
         case .networkCheck: return "Check"
-        case .securityLab: return "Security Lab"
-        case .bluetooth: return "Bluetooth"
+        case .securityLab: return "Lab"
+        case .bluetooth: return "Wireless"
         case .radio: return "Radio"
         case .requests: return "Requests"
         case .devices: return "Devices"
         case .capabilities: return "Capabilities"
         case .settings: return "Settings"
+        case .center: return "Center"
+        case .wifi: return "Wi-Fi"
+        case .ping: return "Ping"
+        case .localNetwork: return "Local"
+        case .deviceSecurity: return "Device"
+        case .captureInspector: return "Captures"
+        case .secretScanner: return "Secrets"
+        case .exposureCheck: return "Exposure"
+        case .authLab: return "Auth Lab"
+        case .externalNodes: return "Nodes"
+        case .reports: return "Reports"
+        case .ecosystem: return "Ecosystem"
+        case .serverHealth: return "Server"
+        }
+    }
+
+    /// One line for the Security Intelligence Center.
+    var summary: String {
+        switch self {
+        case .dashboard: return "Status, active operations and recent activity"
+        case .network: return "This device's connection and the network tools"
+        case .networkCheck: return "DNS, HTTPS, TLS, captive portal and proxy checks"
+        case .securityLab: return "Secret Scanner, Exposure Check and Authentication Defense Lab"
+        case .bluetooth: return "Bluetooth LE advertisers nearby"
+        case .radio: return "External radio node: spectrum and Wi-Fi scans (receive-only)"
+        case .requests: return "Bounded test requests to endpoints you own"
+        case .devices: return "Pair with your HCG Server and share reports"
+        case .capabilities: return "What works here, what is verified, and why"
+        case .settings: return "Switches, retention, endpoints and keys"
+        case .center: return "Every Sentinel screen"
+        case .wifi: return "Interface, addresses, gateway and connection changes"
+        case .ping: return "ICMP Echo or a labelled TCP connect test"
+        case .localNetwork: return "Bonjour services and an authorised sweep"
+        case .deviceSecurity: return "Passcode, system, app package and environment checks"
+        case .captureInspector: return "Imported pcap and pcapng files"
+        case .secretScanner: return "Exposed credentials in files you choose"
+        case .exposureCheck: return "HTTPS, certificates and headers of your services"
+        case .authLab: return "Lockout and rate limits on a synthetic local service"
+        case .externalNodes: return "HCG Server, radio nodes, System Tester, helper"
+        case .reports: return "Lab, device, imported and network reports"
+        case .ecosystem: return "How Sentinel works with other HCG products"
+        case .serverHealth: return "Read-only health of your paired HCG Server"
         }
     }
 }

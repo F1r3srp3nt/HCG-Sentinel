@@ -9,6 +9,15 @@ struct RootView: View {
 
     private var isCompact: Bool { sizeClass != .regular }
 
+    /// Motion follows Sentinel's Animation switch and the system Reduce Motion setting. Screenshot checks in CI can
+    /// force the static appearance with the debug-only launch argument -SentinelStaticMotion.
+    private var motionAllowed: Bool {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-SentinelStaticMotion") { return false }
+        #endif
+        return app.settings.animationsEnabled && !reduceMotion
+    }
+
     var body: some View {
         Group {
             if isCompact {
@@ -17,7 +26,7 @@ struct RootView: View {
                 RegularLayout()
             }
         }
-        .environment(\.sentinelMotion, app.settings.animationsEnabled && !reduceMotion)
+        .environment(\.sentinelMotion, motionAllowed)
         .accentColor(Theme.cyan)
         .preferredColorScheme(.dark)
         .onAppear { router.layoutChanged(compact: isCompact) }
@@ -32,7 +41,7 @@ struct RootView: View {
                     }
             }
             .modifier(ModelInjection(app: app, router: router))
-            .environment(\.sentinelMotion, app.settings.animationsEnabled && !reduceMotion)
+            .environment(\.sentinelMotion, motionAllowed)
             .accentColor(Theme.cyan)
             .preferredColorScheme(.dark)
         }
@@ -68,6 +77,19 @@ struct SectionContent: View {
         case .radio: RadioLabView()
         case .requests: RequestComposerView()
         case .devices: ConnectedDevicesView()
+        case .center: SecurityCenterView()
+        case .wifi: WiFiView()
+        case .ping: PingView()
+        case .localNetwork: LocalNetworkView()
+        case .deviceSecurity: DeviceSecurityView()
+        case .captureInspector: NetworkInspectorView(showsNetwork: false)
+        case .secretScanner: SecretScannerView()
+        case .exposureCheck: ExposureCheckView()
+        case .authLab: AuthLabView()
+        case .externalNodes: ExternalNodesView()
+        case .reports: SecurityReportsView()
+        case .ecosystem: EcosystemView()
+        case .serverHealth: ServerHealthView()
         case .capabilities: CapabilitiesView()
         case .settings: SettingsView()
         }
@@ -112,19 +134,14 @@ private struct RegularLayout: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 4) {
             VStack(alignment: .leading, spacing: 6) {
-                Image("SentinelHeader")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 64)
-                    .accessibilityLabel("HCG Sentinel")
-                    .accessibilityAddTraits(.isHeader)
+                ScaledHCGLockup(word: "SENTINEL", maxScale: 1.0)
                 SweepLine()
             }
             .padding(.horizontal, 16)
             .padding(.top, 18)
             .padding(.bottom, 12)
 
-            ForEach(SentinelSection.allCases) { section in
+            ForEach(Router.sidebarSections) { section in
                 Button(action: { router.open(section) }) {
                     HStack(spacing: 12) {
                         Image(systemName: section.icon).frame(width: 24)

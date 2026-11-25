@@ -19,6 +19,7 @@ struct RequestComposerView: View {
             bodyCard
             actionCard
             responseSection
+            RequestHistoryCard()
             FilteringCard()
         }
         .navigationBarTitle("Request Composer", displayMode: .inline)
@@ -304,6 +305,23 @@ private struct ResponseCard: View {
                 InfoRow(label: "Sent at", value: Formatters.preciseTime.string(from: response.startedAt), mono: true)
                 InfoRow(label: "Body size", value: Formatters.bytes(response.totalBodyBytes), mono: true)
                 Explanation("Total time is measured from Send until the full response arrived, including connection setup.")
+                if let timing = response.timing {
+                    InfoRow(label: "DNS / connect / TLS", value: [timing.dns, timing.connect, timing.tls].map { $0.map { String(format: "%.0f ms", $0 * 1000) } ?? "—" }.joined(separator: " / "), mono: true)
+                    InfoRow(label: "Time to first byte", value: timing.firstByte.map { String(format: "%.0f ms", $0 * 1000) } ?? "—", mono: true)
+                    if timing.reusedConnection { Explanation("The connection was reused, so there was no DNS, connect or TLS phase.") }
+                }
+            }
+            if let tls = response.tls {
+                SentinelCard {
+                    SectionLabel(text: "TLS", tone: .info)
+                    InfoRow(label: "Protocol", value: tls.protocolVersion ?? "Not reported", mono: true)
+                    InfoRow(label: "Cipher suite", value: tls.cipherSuite ?? "Not reported", mono: true)
+                    InfoRow(label: "Trusted by iOS", value: tls.trusted.map { $0 ? "Yes" : "No" } ?? "Not reported")
+                    ForEach(Array(tls.certificates.enumerated()), id: \.offset) { item in
+                        InfoRow(label: item.offset == 0 ? "Certificate" : "Issuer \(item.offset)", value: item.element)
+                    }
+                    Explanation("As iOS reported it for this connection. Sentinel does not bypass certificate checks: an untrusted certificate fails the request.")
+                }
             }
             SentinelCard {
                 SectionLabel(text: "Response headers", tone: .info)
@@ -351,6 +369,33 @@ private struct ResponseCard: View {
         case 300..<400: return .ready
         case 400..<500: return .warning
         default: return .danger
+        }
+    }
+}
+
+
+/// Requests sent in this session, newest first. URLs are redacted; header values are never kept.
+private struct RequestHistoryCard: View {
+    @EnvironmentObject private var requests: RequestModel
+
+    var body: some View {
+        SentinelCard {
+            AdaptiveStack {
+                SectionLabel(text: "History (this session only)")
+                Spacer(minLength: 0)
+                if !requests.history.isEmpty { Button("Clear") { requests.clearHistory() }.font(.footnote) }
+            }
+            if requests.history.isEmpty { Explanation("Sent requests appear here until Sentinel quits: method, redacted URL, header names, outcome and time.") }
+            ForEach(requests.history) { entry in
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(Formatters.time.string(from: entry.at)) · \(entry.method) \(entry.url)")
+                        .font(Theme.mono(.caption)).foregroundColor(Theme.textPrimary).fixedSize(horizontal: false, vertical: true)
+                    Text([entry.outcome, entry.duration.map { String(format: "%.0f ms", $0 * 1000) }, entry.tls?.protocolVersion,
+                          entry.headerNames.isEmpty ? nil : "headers: \(entry.headerNames.joined(separator: ", "))", entry.bodyBytes > 0 ? "\(entry.bodyBytes)-byte body" : nil]
+                            .compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 }

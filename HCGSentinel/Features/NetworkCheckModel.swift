@@ -9,6 +9,8 @@ final class NetworkCheckModel: ObservableObject {
     private let assessment: NetworkAssessment
     private let log: ActivityLog
     private let registry: CapabilityRegistry
+    /// Called once per finished run (for the network diagnostic history).
+    var onFinished: ((AssessmentReport) -> Void)?
 
     init(probe: NetworkAssessmentProbe, log: ActivityLog, registry: CapabilityRegistry) {
         self.assessment = NetworkAssessment(probe: probe)
@@ -45,6 +47,7 @@ final class NetworkCheckModel: ObservableObject {
         state = assessment.state
         guard case .finished(let report) = assessment.state else { return }
         let concerns = report.count(.securityConcern)
+        onFinished?(report)
         log.record(.network, "Check My Network finished: \(report.headline)", severity: concerns > 0 ? .warning : .info)
         // Verified only when at least one network test actually got an answer.
         let answered = report.findings.contains { $0.step.usesNetwork && ($0.kind == .observation || $0.kind == .notice || $0.kind == .securityConcern) }

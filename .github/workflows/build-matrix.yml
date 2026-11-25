@@ -151,3 +151,85 @@ jobs:
           xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel -configuration Debug \
             -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/legacy-probe" \
             CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "deployment target|BUILD (SUCCEEDED|FAILED)" | head -5
+
+  maker-route:
+    name: Through HCG Executable Maker ${{ matrix.maker.label }} (Xcode with iOS 15.0 minimum)
+    # Drives Maker's real New Build → Mobile Build Studio flow headlessly (its tools/ui-driver), the way Maker's own CI
+    # does, against THIS revision of Sentinel. The selected Xcode's iPhoneOS SDK minimum is raised to 15.0 first, to
+    # mirror a Mac whose Xcode reports "15.0 to 27.2.x". Unsigned: CI holds no signing identity.
+    #
+    # Two Maker revisions: its `main` (labelled 0.3.1) still judges every output with the project's first scheme, so
+    # HCGSentinelModern cannot be chosen there — that row records the problem and is allowed to fail. The fix
+    # (scheme chosen before outputs, Imported copy / Refresh source) is on Maker's branch fix/sentinel-end-to-end,
+    # not yet merged; that row must pass.
+    runs-on: macos-26
+    timeout-minutes: 60
+    continue-on-error: ${{ matrix.maker.known_broken }}
+    strategy:
+      fail-fast: false
+      matrix:
+        maker:
+          - { label: "main (known scheme bug)", ref: main, key: main, known_broken: true }
+          - { label: "fix/sentinel-end-to-end", ref: fix/sentinel-end-to-end, key: fix, known_broken: false }
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      OUT: ${{ github.workspace }}/maker-out
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: "HCG Sentinel"
+      - uses: actions/checkout@v4
+        with:
+          repository: F1r3srp3nt/HCG-Executable-Maker
+          path: maker
+          ref: ${{ matrix.maker.ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Maker revision and version
+        run: |
+          git -C maker log -1 --format="Maker %h %cd %s"
+          grep -rhoE "<Version>[^<]+" maker/Directory.Build.props maker/src/HCG.ExecutableMaker.App/*.csproj 2>/dev/null | head -1 || true
+          echo "Sentinel revision under test: $(git -C 'HCG Sentinel' rev-parse HEAD)"
+      - name: Raise the iPhoneOS SDK minimum to 15.0 (mirrors an Xcode whose range is 15.0 to 27.x)
+        run: |
+          for sdk in iPhoneOS iPhoneSimulator; do
+            dir="$DEVELOPER_DIR/Platforms/$sdk.platform/Developer/SDKs/$sdk.sdk"
+            key=$( [ "$sdk" = iPhoneOS ] && echo iphoneos || echo iphonesimulator )
+            sudo python3 - "$dir/SDKSettings.json" "$key" <<'PY'
+          import json, sys
+          path, key = sys.argv[1], sys.argv[2]
+          data = json.load(open(path))
+          data["SupportedTargets"][key]["MinimumDeploymentTarget"] = "15.0"
+          json.dump(data, open(path, "w"), indent=1)
+          print(path, data["SupportedTargets"][key]["MinimumDeploymentTarget"], "to", data["SupportedTargets"][key]["MaximumDeploymentTarget"])
+          PY
+            sudo /usr/libexec/PlistBuddy -c "Set :SupportedTargets:$key:MinimumDeploymentTarget 15.0" "$dir/SDKSettings.plist" || true
+          done
+      - name: Build Maker's UI driver
+        run: dotnet build maker/tools/ui-driver -c Release -nologo -v q
+      - name: Maker — HCGSentinelModern for the Simulator, archive (unsigned), and HCGSentinel (must be blocked)
+        run: |
+          mkdir -p "$OUT/screens"
+          driver=maker/tools/ui-driver/bin/Release/net10.0/hcg-ui-driver.dll
+          run() { name="$1"; shift
+            dotnet "$driver" --mobile --source "$GITHUB_WORKSPACE/HCG Sentinel" --output "$OUT/$name" \
+              --screenshots "$OUT/screens" --prefix "$name" "$@" > "$OUT/$name.log" 2>&1; status=$?
+            echo "== $name (exit $status)"; grep -E "Inspection:|Scheme|Readiness \[|State:|Output |Artifact|FAIL|✗|error" "$OUT/$name.log" | cut -c1-300 | head -40
+            return $status; }
+          rc=0
+          run modern-sim --mobile-output sim --scheme HCGSentinelModern || rc=1
+          run modern-archive --mobile-output archive --scheme HCGSentinelModern --signing unsigned || rc=1
+          # Maker does not let a blocked output be selected, so there is no signing choice and no readiness row for it;
+          # assert the state Maker shows instead, and that the build cannot start even after trust.
+          run legacy-blocked --mobile-output archive --scheme HCGSentinel --expect-state "Blocked — deployment target incompatible" || rc=1
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: maker-route-${{ matrix.maker.key }}
+          path: |
+            ${{ github.workspace }}/maker-out/*.log
+            ${{ github.workspace }}/maker-out/screens
+            ${{ github.workspace }}/maker-out/**/*.json
+          if-no-files-found: warn

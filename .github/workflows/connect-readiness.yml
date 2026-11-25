@@ -1,0 +1,41 @@
+name: HCG Connect readiness (manual)
+
+# Read-only configuration checks against HCG Connect (Actions › this workflow › Run workflow).
+# No account, token or client secret is used; nothing is registered or changed. Sentinel has no registered client yet,
+# so these checks show what exists centrally and that an unregistered client is refused. See docs/HCG_CONNECT.md.
+
+on:
+  workflow_dispatch:
+  # Also runs once when this file or the readiness doc changes on a branch, so the results sit beside the PR.
+  push:
+    paths:
+      - .github/workflows/connect-readiness.yml
+      - docs/HCG_CONNECT.md
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ISSUER: https://qggdyzoydveafkmjgkpq.supabase.co/auth/v1
+      API: https://beta.hakmicapitalgroup.com/api/public/ecosystem/v1
+    steps:
+      - name: Discovery document
+        run: |
+          curl -sS -m 20 "$ISSUER/.well-known/openid-configuration" | python3 -c '
+          import json, sys
+          d = json.load(sys.stdin)
+          for k in ["issuer", "authorization_endpoint", "token_endpoint", "userinfo_endpoint", "jwks_uri",
+                    "code_challenge_methods_supported", "grant_types_supported", "revocation_endpoint", "end_session_endpoint"]:
+              print(f"{k}: {d.get(k)}")'
+      - name: Signing keys
+        run: curl -sS -m 20 "$ISSUER/.well-known/jwks.json" | python3 -c 'import json,sys; print("keys:", [(k.get("kty"), k.get("alg")) for k in json.load(sys.stdin)["keys"]])'
+      - name: An unregistered client is refused (Sentinel has no client yet)
+        run: |
+          url="$ISSUER/oauth/authorize?client_id=00000000-0000-4000-8000-000000000000&response_type=code&redirect_uri=com.hcg.sentinel%3A%2Foauth2%2Fcallback&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&scope=openid%20email%20profile&state=check"
+          curl -sS -m 20 -o body.txt -w "HTTP %{http_code}\n" "$url"; head -c 300 body.txt; echo
+      - name: Ecosystem API requires a token
+        run: curl -sS -m 20 -o /dev/null -w "GET /me without a token → HTTP %{http_code}\n" "$API/me"
