@@ -1,5 +1,6 @@
 import SentinelCore
 import SwiftUI
+import UIKit
 
 struct SettingsView: View {
     var body: some View {
@@ -13,7 +14,11 @@ struct SettingsView: View {
             EndpointSettingsCard()
             NodeSettingsCard()
             HelperSettingsCard()
-            DiagnosticsSettingsCard()
+            // Grouped because a view builder takes at most 10 children on iOS 14–16.
+            Group {
+                DiagnosticsSettingsCard()
+                AboutSettingsCard()
+            }
         }
         .navigationBarTitle("Settings", displayMode: .inline)
     }
@@ -396,5 +401,44 @@ private struct DiagnosticsSettingsCard: View {
                 .disabled(app.activity.isEmpty)
             Explanation("Exporting opens the iOS share sheet; the log goes only where you send it.")
         }
+    }
+}
+
+// MARK: - About
+
+private struct AboutSettingsCard: View {
+    var body: some View {
+        SentinelCard {
+            SectionLabel(text: "About")
+            Button(action: openRepoPage) {
+                HStack(spacing: 12) {
+                    Image(systemName: "safari")
+                        .foregroundColor(Theme.cyan)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("HCG Repo")
+                            .font(.body)
+                            .foregroundColor(Theme.textPrimary)
+                        Text("Product page (opens in Safari)")
+                            .font(.footnote)
+                            .foregroundColor(Theme.textSecondary)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "arrow.up.right")
+                        .foregroundColor(Theme.textSecondary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityAddTraits(.isLink)
+            Explanation("Opens a web page in Safari only when you tap it. Sentinel itself does not connect to it, and nothing about you or this device is added to the address.")
+        }
+    }
+
+    /// Same opener as the rest of the app: iOS handles the page, and a failure leaves Sentinel unaffected.
+    private func openRepoPage() {
+        let url = HCGRepoLink.productPage
+        guard HCGRepoLink.isOpenable(url) else { return }
+        UIApplication.shared.open(url)
     }
 }

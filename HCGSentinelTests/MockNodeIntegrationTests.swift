@@ -1,6 +1,10 @@
 import SentinelCore
 import XCTest
+#if SENTINEL_MODERN_TESTS
+@testable import HCGSentinelModern
+#else
 @testable import HCGSentinel
+#endif
 
 /// Runs the app's real WebSocket transport and Radio Lab model against Tools/mock_radio_node.py.
 ///

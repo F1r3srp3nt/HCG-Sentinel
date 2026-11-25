@@ -132,7 +132,7 @@ compliance and review) that this project has not been prepared or checked for.
 | Maker field | Value |
 | --- | --- |
 | Project | `HCGSentinel.xcodeproj` (repository root; no workspace, no CocoaPods) |
-| Scheme | **`HCGSentinel`** for one app that runs on iOS 14.7 and later. **`HCGSentinelModern`** only when the selected Xcode rejects 14.7 (then iOS 15.0 and later). |
+| Scheme | **`HCGSentinelModern`** with any Xcode whose supported range starts at 15.0 (for example the one reporting "15.0 to 27.2.x"); the app runs on iOS 15.0 and later. **`HCGSentinel`** only with an Xcode that still accepts 14.7 (16.4, 26.x), for the iPhone X on iOS 14.7. Maker's readiness check names the other scheme when the selected one is out of range. |
 | Configuration | **Release** (both schemes archive with Release; Maker passes `-configuration Release`) |
 | Destination | Generic iOS device (`generic/platform=iOS`) for an archive or IPA; iOS Simulator for an unsigned check |
 | Signing | Automatic, your Team ID, "allow provisioning updates" if the Mac has no profile yet |

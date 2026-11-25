@@ -1,6 +1,10 @@
 import SentinelCore
 import XCTest
+#if SENTINEL_MODERN_TESTS
+@testable import HCGSentinelModern
+#else
 @testable import HCGSentinel
+#endif
 
 /// App-level state tests. They run hosted inside the app on a simulator and
 /// exercise the wiring between settings, tools and the capability registry.

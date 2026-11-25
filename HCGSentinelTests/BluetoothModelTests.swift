@@ -1,6 +1,10 @@
 import SentinelCore
 import XCTest
+#if SENTINEL_MODERN_TESTS
+@testable import HCGSentinelModern
+#else
 @testable import HCGSentinel
+#endif
 
 private final class FakeCentral: BluetoothCentral {
     weak var delegate: BluetoothCentralDelegate?

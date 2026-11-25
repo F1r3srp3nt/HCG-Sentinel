@@ -28,6 +28,26 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "B349C814CB8D6C962B143ECF"
+               BuildableName = "HCGSentinelModernTests.xctest"
+               BlueprintName = "HCGSentinelModernTests"
+               ReferencedContainer = "container:HCGSentinel.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "SentinelCoreTests"
+               BuildableName = "SentinelCoreTests"
+               BlueprintName = "SentinelCoreTests"
+               ReferencedContainer = "container:SentinelCore">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

@@ -86,7 +86,7 @@ jobs:
           xcodebuild -project HCGSentinel.xcodeproj -alltargets -configuration Release -showBuildSettings 2>/dev/null \
             | awk '/^Build settings for action .* and target /{t=$NF; sub(":$","",t)} /^ *FULL_PRODUCT_NAME = /{print t" "$3}' \
             | sort -u | tee products.txt
-          test "$(cut -d' ' -f1 products.txt | sort -u | wc -l)" -eq 3
+          test "$(cut -d' ' -f1 products.txt | sort -u | wc -l)" -eq 4
           test -z "$(cut -d' ' -f2 products.txt | sort | uniq -d)" || { echo "Two targets share a product:"; cat products.txt; exit 1; }
       - name: Both schemes into one derived-data folder
         run: |
@@ -99,3 +99,55 @@ jobs:
             path="$RUNNER_TEMP/shared/Build/Products/Release-iphoneos/$app.app"
             echo "$app.app: minimum iOS $(plutil -extract MinimumOSVersion raw "$path/Info.plist"), bundle $(plutil -extract CFBundleIdentifier raw "$path/Info.plist")"
           done
+
+  modern-newest-xcode:
+    name: HCGSentinelModern on the newest Xcode (simulator test, device archive)
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select the newest installed Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          app=$(ls -d /Applications/Xcode_*.app | grep -E 'Xcode_[0-9]+(\.[0-9]+)*\.app$' | sort -V | tail -1)
+          echo "DEVELOPER_DIR=$app/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Selected $app"
+      - name: Toolchain and supported deployment range
+        run: |
+          xcodebuild -version
+          FLAVOR=modern Tools/build.sh range
+      - name: Every target the modern scheme builds or tests resolves to iOS 15.0 or later
+        run: |
+          for target in HCGSentinelModern HCGSentinelModernTests; do
+            for config in Debug Release; do
+              value=$(xcodebuild -project HCGSentinel.xcodeproj -target "$target" -configuration "$config" -showBuildSettings 2>/dev/null \
+                | awk -F' = ' '/^ *IPHONEOS_DEPLOYMENT_TARGET = /{print $2}')
+              echo "$target $config: IPHONEOS_DEPLOYMENT_TARGET = $value"
+              python3 -c "import sys; v=tuple(int(x) for x in '$value'.split('.')); sys.exit(0 if v >= (15, 0) else 1)"
+            done
+          done
+          grep -c "HCGSentinelModernTests" HCGSentinel.xcodeproj/xcshareddata/xcschemes/HCGSentinelModern.xcscheme
+          ! grep -q 'BlueprintName = "HCGSentinel"$' HCGSentinel.xcodeproj/xcshareddata/xcschemes/HCGSentinelModern.xcscheme
+      - name: Pick an iPhone simulator
+        run: python3 Tools/pick_simulator.py iPhone >> "$GITHUB_ENV"
+      - name: Build and test the modern scheme on the simulator
+        timeout-minutes: 25
+        run: |
+          set -o pipefail
+          xcodebuild test -project HCGSentinel.xcodeproj -scheme HCGSentinelModern \
+            -destination "platform=iOS Simulator,id=$SIMULATOR_UDID" -derivedDataPath "$RUNNER_TEMP/modern-tests" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee modern-test.log | grep -E "error:|warning: .*deployment target|Test Case .*(failed|skipped)|Executed [0-9]+ test" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" modern-test.log
+      - name: Release archive for a generic iOS device (unsigned)
+        env:
+          FLAVOR: modern
+          BUILD_DIR: ${{ runner.temp }}/modern-archive
+        run: |
+          Tools/build.sh archive
+          Tools/build.sh inspect | grep -E "MinimumOSVersion|architectures|minos|Built with"
+      - name: Does this Xcode accept the legacy 14.7 scheme? (information only)
+        continue-on-error: true
+        run: |
+          xcodebuild build -project HCGSentinel.xcodeproj -scheme HCGSentinel -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/legacy-probe" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | grep -E "deployment target|BUILD (SUCCEEDED|FAILED)" | head -5
