@@ -220,6 +220,42 @@ final class ReportImportTests: XCTestCase {
         XCTAssertTrue(store.list().isEmpty)
     }
 
+    /// The exact shape HCG System Tester 0.2.0 writes (DeviceLinkDiagnosticReport.encoded(): pretty-printed, sorted keys,
+    /// ISO 8601 dates, no escaped slashes).
+    func testImportsHCGSystemTesterExport() {
+        let json = """
+        {
+          "checks" : [ { "detail" : "USB 3 SuperSpeed", "outcome" : "functional", "title" : "Data link" } ],
+          "createdAt" : "2026-11-24T18:02:11Z",
+          "findings" : [ {
+            "basis" : "observed",
+            "confidence" : "high",
+            "evidence" : [ "Trust dialog accepted on the device", "Pairing record present on this Mac" ],
+            "explanation" : "This Mac can read device data while the device is unlocked.",
+            "remediation" : "Remove the pairing in Settings › General › Transfer or Reset iPhone if you no longer use this Mac.",
+            "severity" : "low",
+            "title" : "Host pairing established"
+          } ],
+          "kind" : "systemtester.connection-security",
+          "limitations" : [ "Only devices connected by cable were assessed." ],
+          "notTested" : [ ],
+          "origin" : { "app" : "HCG System Tester", "appVersion" : "0.2.0", "deviceName" : "Mac", "installationId" : "a1b2", "module" : "connection-security" },
+          "redaction" : { "applied" : true, "policy" : "hcg.redaction/1" },
+          "reportId" : "4b2f6d1e-0c3a-4f6e-9d7a-1f2e3d4c5b6a",
+          "schema" : "hcg.diagnostic-report/1",
+          "scope" : [ "USB and Thunderbolt devices on this Mac" ],
+          "summary" : { "findingCount" : 1, "highestSeverity" : "low", "status" : "completed" },
+          "title" : "Connection security findings"
+        }
+        """
+        guard case .success(let report) = ReportImporter.importReport(Data(json.utf8)) else {
+            return XCTFail("System Tester's export must import: \(ReportImporter.importReport(Data(json.utf8)))")
+        }
+        XCTAssertEqual(report.origin.app, "HCG System Tester")
+        XCTAssertEqual(report.findings.first?.title, "Host pairing established")
+        XCTAssertTrue(ReportTextRenderer.text(report).contains("Host pairing established"))
+    }
+
     func testRefusals() throws {
         XCTAssertEqual(ReportImporter.importReport(Data("not json".utf8)), .failure(.notJSON))
         XCTAssertEqual(ReportImporter.importReport(Data(#"{"schema":"hcg.systemtester.inventory/1"}"#.utf8)), .failure(.wrongSchema("hcg.systemtester.inventory/1")))
