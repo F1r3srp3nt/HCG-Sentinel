@@ -253,7 +253,7 @@ final class ReportImportTests: XCTestCase {
         }
         XCTAssertEqual(report.origin.app, "HCG System Tester")
         XCTAssertEqual(report.findings.first?.title, "Host pairing established")
-        XCTAssertTrue(ReportTextRenderer.text(report).contains("Host pairing established"))
+        XCTAssertTrue(ReportTextRenderer.text(report).contains("Evidence: Trust dialog accepted on the device"), "the evidence is rendered as text")
     }
 
     func testRefusals() throws {
