@@ -33,6 +33,13 @@
 			</array>
 		</dict>
 	</array>
+	<!-- HCG Connect sign-in for Connected Devices. HCG issues the public client ID (a UUID, not a secret) and the
+	     redirect URI for HCG Sentinel; until both are set, sign-in reports "not configured" and contacts nothing.
+	     No value is assumed here. -->
+	<key>HCGConnectClientID</key>
+	<string></string>
+	<key>HCGConnectRedirectURI</key>
+	<string></string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -55,7 +62,7 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Sentinel uses Bluetooth only when you start a scan in Bluetooth Explorer, to list nearby Bluetooth LE devices that are advertising.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Sentinel uses your local network only when you start something yourself: browsing for Bonjour services, sweeping a range you confirmed you are authorised to test, pinging an address, sending a test request, or connecting to your own radio node.</string>
+	<string>Sentinel uses your local network only when you start something yourself: browsing for Bonjour services, sweeping a range you confirmed you are authorised to test, pinging an address, sending a test request, connecting to your own radio node, or sharing a report through the HCG Server you paired with.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_http._tcp</string>

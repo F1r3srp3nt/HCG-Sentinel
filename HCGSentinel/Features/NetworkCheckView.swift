@@ -3,6 +3,8 @@ import SwiftUI
 
 struct NetworkCheckView: View {
     @EnvironmentObject private var check: NetworkCheckModel
+    @EnvironmentObject private var devices: ConnectedDevicesModel
+    @State private var shareToDevice = false
 
     var body: some View {
         Screen {
@@ -83,6 +85,16 @@ struct NetworkCheckView: View {
             InfoRow(label: "Unavailable or not checked", value: "\(report.count(.unavailable) + report.count(.notChecked))")
             InfoRow(label: "Finished", value: Formatters.preciseTime.string(from: report.finishedAt), mono: true)
             NoticeBanner(icon: "info.circle", text: report.disclaimer, tone: .info)
+            Button(action: { shareToDevice = true }) {
+                Label("Share with paired device", systemImage: "laptopcomputer.and.iphone")
+            }
+            .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
+            .sheet(isPresented: $shareToDevice) {
+                ShareWithDeviceSheet(title: "Check My Network — \(report.headline)") { id, name, version in
+                    SentinelReportSharing.report(from: report, installationId: id, appVersion: version, deviceName: name)
+                }
+                .environmentObject(devices)
+            }
         }
     }
 

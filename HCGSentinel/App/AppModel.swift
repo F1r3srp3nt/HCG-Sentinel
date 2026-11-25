@@ -33,6 +33,8 @@ final class AppModel: ObservableObject {
     let securityLab: SecurityLabModel
     let ping: PingModel
     let localNetwork: LocalNetworkModel
+    /// HCG Device Link (Connected Devices). Contacts a server only while Remote connections is on.
+    let devices: ConnectedDevicesModel
 
     private let store: SettingsStore
     private var timer: Timer?
@@ -70,6 +72,9 @@ final class AppModel: ObservableObject {
         securityLab = SecurityLabModel(store: SecurityReportStore(directory: support.appendingPathComponent("SecurityLab/Reports", isDirectory: true)),
                                        log: log, registry: registry)
 
+        // Settings are saved before they apply (settingsDidChange), so reading the store gives the current switch.
+        devices = ConnectedDevicesModel(log: log, support: support, remoteAllowed: { store.load().remoteConnectionsEnabled })
+
         registry.onChange = { [weak self] in self?.capabilities = self?.registry.states ?? [] }
         log.onChange = { [weak self] in
             if Thread.isMainThread { self?.refreshActivity() } else { DispatchQueue.main.async { self?.refreshActivity() } }
@@ -106,6 +111,7 @@ final class AppModel: ObservableObject {
             log.record(.network, "Retention removed \(removed.count) saved capture(s) older than \(settings.captureRetention.title)")
         }
         network.reload()
+        devices.start()
         log.record(.system, "Sentinel started. All active collection is off until you start it.")
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
     }
@@ -329,6 +335,7 @@ extension SentinelSection {
         case .bluetooth: return "dot.radiowaves.left.and.right"
         case .radio: return "antenna.radiowaves.left.and.right"
         case .requests: return "paperplane"
+        case .devices: return "laptopcomputer.and.iphone"
         case .capabilities: return "checkmark.seal"
         case .settings: return "gearshape"
         }
@@ -343,6 +350,7 @@ extension SentinelSection {
         case .bluetooth: return "Bluetooth"
         case .radio: return "Radio"
         case .requests: return "Requests"
+        case .devices: return "Devices"
         case .capabilities: return "Capabilities"
         case .settings: return "Settings"
         }

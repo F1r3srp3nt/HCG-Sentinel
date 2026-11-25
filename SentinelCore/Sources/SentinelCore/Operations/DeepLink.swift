@@ -6,7 +6,7 @@ import Foundation
 /// sends a request, connects to anything or changes a setting, so a shortcut
 /// surface such as Nexus can never trigger an operation by itself.
 public enum SentinelSection: String, CaseIterable, Identifiable {
-    case dashboard, network, networkCheck, securityLab, bluetooth, radio, requests, capabilities, settings
+    case dashboard, network, networkCheck, securityLab, bluetooth, radio, requests, devices, capabilities, settings
 
     public var id: String { rawValue }
 
@@ -19,6 +19,7 @@ public enum SentinelSection: String, CaseIterable, Identifiable {
         case .bluetooth: return "Bluetooth Explorer"
         case .radio: return "Radio Lab"
         case .requests: return "Request Composer"
+        case .devices: return "Connected Devices"
         case .capabilities: return "Capabilities"
         case .settings: return "Settings"
         }

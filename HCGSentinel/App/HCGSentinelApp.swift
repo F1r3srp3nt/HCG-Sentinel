@@ -84,6 +84,7 @@ struct ModelInjection: ViewModifier {
             .environmentObject(app.helper)
             .environmentObject(app.networkCheck)
             .environmentObject(app.securityLab)
+            .environmentObject(app.devices)
             .environmentObject(app.connection)
             .environmentObject(app.ping)
             .environmentObject(app.localNetwork)
