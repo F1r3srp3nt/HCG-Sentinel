@@ -109,16 +109,21 @@ final class AppModel: ObservableObject {
             self?.intelligence.record(.ping(target: run.host, configuration: run.configuration, results: run.results,
                                             at: run.finishedAt ?? Date(), failure: run.failure))
         }
-        devices.$link.receive(on: DispatchQueue.main).sink { [weak self] link in
-            if case .connected = link {
-                self?.registry.recordVerified(.deviceLinkPairing, evidence: "The paired HCG Server accepted this device's Device Link connection")
+        // ConnectedDevicesModel is main-actor isolated, so its publishers are read from a main-actor task.
+        let devices = self.devices
+        Task { @MainActor [weak self] in
+            let link = devices.$link.sink { link in
+                if case .connected = link {
+                    self?.registry.recordVerified(.deviceLinkPairing, evidence: "The paired HCG Server accepted this device's Device Link connection")
+                }
             }
-        }.store(in: &cancellables)
-        devices.$health.receive(on: DispatchQueue.main).sink { [weak self] health in
-            if case .loaded = health {
-                self?.registry.recordVerified(.serverHealth, evidence: "The paired HCG Server answered its diagnostics request")
+            let health = devices.$health.sink { health in
+                if case .loaded = health {
+                    self?.registry.recordVerified(.serverHealth, evidence: "The paired HCG Server answered its diagnostics request")
+                }
             }
-        }.store(in: &cancellables)
+            self?.deviceSubscriptions = [link, health]
+        }
 
         applySettings(loaded, initial: true)
         capabilities = registry.states
@@ -126,6 +131,7 @@ final class AppModel: ObservableObject {
     }
 
     private var cancellables = Set<AnyCancellable>()
+    private var deviceSubscriptions: [AnyCancellable] = []
 
     /// Called once when the first scene becomes active.
     func start() {
