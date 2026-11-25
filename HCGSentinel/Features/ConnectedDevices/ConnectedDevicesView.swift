@@ -13,7 +13,7 @@ struct ConnectedDevicesView: View {
 
     var body: some View {
         Screen {
-            Explanation("Pair Sentinel with an HCG Server you own to see your other HCG devices and send them redacted reports. HCG Connect identifies you and HCG decides what your account may do; the server owner approves every device. Sentinel never sends anything by itself.")
+            Explanation("Pair Sentinel with an HCG Server you own to see your other HCG devices and send them redacted reports. HCG Connect identifies you and HCG decides what your account may do; the server owner approves every device. Sentinel never sends anything by itself: every share is reviewed and confirmed by you, one report at a time.")
             if !app.settings.remoteConnectionsEnabled {
                 NoticeBanner(icon: "wifi.slash", text: "Remote connections are off in Settings, so Sentinel does not contact any HCG Server. Everything on this device keeps working.", tone: .warning)
             }
@@ -34,6 +34,7 @@ struct ConnectedDevicesView: View {
                 SharedReportsCard()
                 ApprovalsCard()
             }
+            ShareHistoryCard()
         }
         .navigationBarTitle("Connected Devices", displayMode: .inline)
         .onAppear { devices.appeared() }
@@ -248,20 +249,78 @@ private struct PairedDevicesCard: View {
 
 private struct SharedReportsCard: View {
     @EnvironmentObject private var devices: ConnectedDevicesModel
+    @State private var withdrawing: String?
+    @State private var result: String?
 
     var body: some View {
         SentinelCard {
             SectionLabel(text: "Shared reports")
             if devices.outbox.isEmpty {
-                Explanation("Nothing shared yet. Open a Security Lab report or a finished network check and choose Share with paired device.")
+                Explanation("Nothing waiting on the server. Open a Security Lab report, a finished network check or HCG Server health and choose Share with paired device; you review the exact report before anything is sent.")
             }
             ForEach(devices.outbox) { m in
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(m.title).font(.subheadline).foregroundColor(Theme.textPrimary)
                     Text("To \(m.to.name) (remote) · \(m.status) · expires \(Formatters.preciseTime.string(from: m.expiresAt))")
                         .font(.caption).foregroundColor(Theme.textSecondary)
+                    if m.status == "queued" {
+                        Button(action: { withdraw(m.messageId) }) { Label("Withdraw", systemImage: "arrow.uturn.backward") }
+                            .buttonStyle(SentinelButtonStyle(kind: .destructive))
+                            .disabled(withdrawing != nil)
+                    }
                 }
             }
+            if let r = result { NoticeBanner(icon: "arrow.uturn.backward", text: r, tone: .info) }
+            Explanation("A queued report has not been downloaded yet and can be withdrawn; HCG Server then deletes its copy. Once the device downloads it, it can no longer be recalled.")
+        }
+    }
+
+    private func withdraw(_ id: String) {
+        withdrawing = id
+        Task {
+            result = await devices.withdraw(messageId: id)
+            withdrawing = nil
+        }
+    }
+}
+
+/// The local share history: every send, cancellation, failure and withdrawal.
+/// It holds no report content, only titles, types, sizes and SHA-256 values.
+private struct ShareHistoryCard: View {
+    @EnvironmentObject private var devices: ConnectedDevicesModel
+
+    var body: some View {
+        SentinelCard {
+            SectionLabel(text: "Share history (this device)")
+            if devices.shareHistory.isEmpty {
+                Explanation("No reports shared or cancelled yet.")
+            }
+            ForEach(devices.shareHistory.prefix(100)) { e in
+                VStack(alignment: .leading, spacing: 3) {
+                    AdaptiveStack {
+                        StatusPill(text: (e.action == .withdraw ? "Withdraw: " : "") + e.outcome.label, tone: tone(e))
+                        Text(Formatters.preciseTime.string(from: e.time)).font(Theme.mono(.caption)).foregroundColor(Theme.textSecondary)
+                    }
+                    Text(verbatim: e.reportTitle).font(.subheadline).foregroundColor(Theme.textPrimary).fixedSize(horizontal: false, vertical: true)
+                    Text(verbatim: "\(e.reportKind) · \(e.payloadSize) bytes" + (e.payloadSha256.isEmpty ? "" : " · SHA-256 \(e.payloadSha256.prefix(16))…"))
+                        .font(Theme.mono(.caption)).foregroundColor(Theme.textSecondary)
+                    Text(verbatim: "To " + (e.destinationName ?? "no device chosen")
+                         + (e.destinationFingerprint.map { $0.isEmpty ? "" : " · key \(LinkCrypto.displayFingerprint(String($0.prefix(16))))…" } ?? ""))
+                        .font(.caption).foregroundColor(Theme.textSecondary)
+                    if let d = e.detail { Text(verbatim: d).font(.caption).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true) }
+                }
+                .padding(.vertical, 2)
+            }
+            Explanation("Kept only on this device. It records what was shared, with whom and how it ended, never the report itself.")
+        }
+    }
+
+    private func tone(_ e: ShareAuditEntry) -> Tone {
+        switch e.outcome {
+        case .sent: return .verified
+        case .withdrawn: return .accent
+        case .failed: return .danger
+        case .cancelledBeforeSend: return .off
         }
     }
 }
@@ -277,56 +336,6 @@ private struct ApprovalsCard: View {
             } else {
                 Explanation(devices.approvals?.note ?? "Nothing is waiting for your approval.")
             }
-        }
-    }
-}
-
-/// Chooses the remote device a report goes to, and says so plainly before sending.
-struct ShareWithDeviceSheet: View {
-    @EnvironmentObject private var devices: ConnectedDevicesModel
-    @Environment(\.presentationMode) private var presentation
-    let title: String
-    let makeReport: (String, String, String) -> DiagnosticReport
-    @State private var result: String?
-    @State private var sending = false
-
-    var body: some View {
-        NavContainer {
-            Screen {
-                Explanation("The report is redacted on this device before it is sent: credentials, tokens and passwords are removed, and network names and addresses are withheld. The receiving app shows it as text only; nothing in it is ever run.")
-                if devices.isLocalDevelopment { LocalDevelopmentBanner() }
-                SentinelCard {
-                    SectionLabel(text: "Report")
-                    Text(title).font(.subheadline).foregroundColor(Theme.textPrimary)
-                }
-                SentinelCard {
-                    SectionLabel(text: "Send to (remote device)")
-                    if devices.recipients.isEmpty {
-                        Explanation(devices.record?.status == .approved
-                                    ? "No paired device accepts reports right now. HCG Terminal and HCG Nexus can receive them once paired."
-                                    : "Pair this device with an HCG Server in Connected Devices first.")
-                    }
-                    ForEach(devices.recipients) { target in
-                        Button(action: { send(to: target) }) {
-                            LinkDeviceRow(device: target, isSelf: false)
-                        }
-                        .disabled(sending)
-                    }
-                }
-                if let r = result { NoticeBanner(icon: "paperplane", text: r, tone: .info) }
-            }
-            .navigationBarTitle("Share with paired device", displayMode: .inline)
-            .navigationBarItems(trailing: Button("Done") { presentation.wrappedValue.dismiss() })
-        }
-    }
-
-    private func send(to target: LinkInstallation) {
-        guard let me = devices.sharingIdentity() else { result = devices.identityProblem; return }
-        sending = true
-        let report = makeReport(me.installationId, me.deviceName, me.appVersion)
-        Task {
-            result = await devices.share(report, to: target)
-            sending = false
         }
     }
 }

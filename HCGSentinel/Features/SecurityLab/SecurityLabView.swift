@@ -210,12 +210,13 @@ struct SecurityReportView: View {
             .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
             .disabled(!SentinelReportSharing.canShare(record))
             .sheet(isPresented: $shareToDevice) {
-                ShareWithDeviceSheet(title: "\(record.module.title) — \(record.headline)") { id, name, version in
-                    SentinelReportSharing.report(from: record, installationId: id, appVersion: version, deviceName: name)
+                ShareReviewSheet(title: "\(record.module.title) — \(record.headline)") { origin, redaction in
+                    SentinelReportSharing.report(from: record, installationId: origin.installationId, appVersion: origin.appVersion,
+                                                 deviceName: origin.deviceName, redaction: redaction)
                 }
                 .environmentObject(devices)
             }
-            Explanation("Exports are Markdown with secret values redacted. Sharing with a paired device sends the same redacted content through your HCG Server to the device you pick. Sharing is always your choice; nothing is sent automatically.")
+            Explanation("Exports are Markdown with secret values redacted. Sharing with a paired device first shows the exact redacted report and the destination's key for you to review; nothing is sent until you confirm, and you can withdraw it until the device downloads it.")
         }
         .sheet(item: Binding(get: { shareURL.map(ShareItem.init(url:)) }, set: { shareURL = $0?.url })) { item in
             ShareSheet(items: [item.url])

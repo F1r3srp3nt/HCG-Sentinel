@@ -40,12 +40,38 @@ public struct Redactor {
 
     /// Redacts credentials embedded in free text, JSON or form bodies.
     public func text(_ input: String) -> String {
+        textCounting(input).text
+    }
+
+    /// `text(_:)`, also saying how many replacements its rules made.
+    public func textCounting(_ input: String) -> (text: String, replacements: Int) {
         var output = input
+        var count = 0
         for (pattern, template) in Redactor.rules {
-            output = pattern.stringByReplacingMatches(in: output, range: NSRange(output.startIndex..., in: output),
-                                                      withTemplate: template)
+            let replaced = Redactor.replaceCounting(pattern, template, in: output)
+            output = replaced.text
+            count += replaced.replacements
         }
-        return output
+        return (output, count)
+    }
+
+    /// Replaces every match and counts the matches that actually changed
+    /// (re-redacting an existing placeholder is not counted).
+    static func replaceCounting(_ pattern: NSRegularExpression, _ template: String, in input: String) -> (text: String, replacements: Int) {
+        let ns = input as NSString
+        var out = ""
+        var last = 0
+        var count = 0
+        for m in pattern.matches(in: input, range: NSRange(location: 0, length: ns.length)) {
+            let original = ns.substring(with: m.range)
+            let replacement = pattern.replacementString(for: m, in: input, offset: 0, template: template)
+            out += ns.substring(with: NSRange(location: last, length: m.range.location - last))
+            out += replacement
+            last = m.range.location + m.range.length
+            if replacement != original { count += 1 }
+        }
+        out += ns.substring(from: last)
+        return (out, count)
     }
 
     private static let rules: [(NSRegularExpression, String)] = {

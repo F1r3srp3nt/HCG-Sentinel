@@ -8,7 +8,7 @@ public enum DeviceLinkProtocol {
     public static let reportSchema = "hcg.diagnostic-report/1"
     public static let redactionPolicy = "hcg.redaction/1"
     /// Version of this Swift client package (bump on every change; vendored copies must match).
-    public static let clientVersion = "1.1.0"
+    public static let clientVersion = "1.2.0"
 
     public enum Header {
         public static let protocolVersion = "HCG-Link-Protocol"

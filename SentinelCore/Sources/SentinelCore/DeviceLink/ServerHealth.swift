@@ -215,9 +215,12 @@ extension SentinelReportSharing {
     /// already redacts its security events; Sentinel's redactor and the shared
     /// rules run again, and IP addresses are masked (the device API address is
     /// not included).
+    /// `redaction` should allow `serverName` (the server's display name is the
+    /// only host name a shared report may carry); by default it does.
     public static func report(from d: LinkDiagnostics, serverName: String, reportId: String = UUID().uuidString, installationId: String,
-                              appVersion: String, deviceName: String, sharedAt: Date = Date()) -> DiagnosticReport {
-        let r = sentinelRedacted
+                              appVersion: String, deviceName: String, sharedAt: Date = Date(),
+                              redaction: ShareRedaction? = nil) -> DiagnosticReport {
+        let r = (redaction ?? ShareRedaction(context: .init(allowedNames: [serverName]))).redact
         let failing = d.services.filter { $0.health == "failing" }
         let findings = failing.map { s in
             DiagnosticReport.Finding(title: "\(r(s.name)) is failing its health check", severity: "medium", confidence: nil, basis: "observation",

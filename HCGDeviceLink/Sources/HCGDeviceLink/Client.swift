@@ -234,6 +234,13 @@ public actor DeviceLinkClient {
         try await call("POST", p + "/messages/" + messageId + "/ack", LinkAck(state: opened ? "opened" : "received"))
     }
 
+    /// Withdraws a report this installation sent, while the recipient has not
+    /// downloaded it yet (`already_delivered` afterwards). The server deletes its copy.
+    public func withdraw(messageId: String) async throws -> LinkMessageHeader {
+        guard UUID(uuidString: messageId) != nil else { throw DeviceLinkError.invalidRequest("not a message ID: \(messageId)") }
+        return try await call("POST", p + "/messages/" + messageId.lowercased() + "/withdraw")
+    }
+
     public func approvals() async throws -> LinkApprovals { try await call("GET", p + "/approvals") }
 
     // MARK: hosting (HCG Server development host)

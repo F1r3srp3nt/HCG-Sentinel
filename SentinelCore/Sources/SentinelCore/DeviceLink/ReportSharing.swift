@@ -5,14 +5,20 @@ import Foundation
 
 /// Turns Sentinel results into `hcg.diagnostic-report/1` documents for sharing
 /// with a paired device through HCG Server (Device Link). Every string goes
-/// through Sentinel's own `Redactor` first and then the shared
-/// `hcg.redaction/1` rules. Network identifiers (Wi-Fi name, BSSID, addresses)
-/// are never shared.
+/// through a `ShareRedaction`: Sentinel's own `Redactor` and the sharing rules
+/// (user names, home folders, device and host names, serial numbers), then the
+/// shared `hcg.redaction/1` strict rules. Network identifiers (Wi-Fi name,
+/// BSSID, addresses) are never shared. Building a report sends nothing: the
+/// app wraps it in a `SharePayload` and the user reviews it first.
 public enum SentinelReportSharing {
     public static let app = "hcg.sentinel"
 
-    /// Sentinel's redactor, then the shared rules.
-    static func sentinelRedacted(_ s: String) -> String { Redactor.standard.text(s) }
+    /// The neutral name a shared report gives this device ("iPhone"), never the
+    /// user's personal device name.
+    public static func neutralDeviceName(model: String) -> String {
+        let m = model.trimmingCharacters(in: .whitespaces)
+        return ["iPhone", "iPad", "iPod touch", "Mac"].first { m.hasPrefix($0) } ?? "iOS device"
+    }
 
     static func kind(_ module: SecurityModule) -> String {
         switch module {
@@ -26,8 +32,8 @@ public enum SentinelReportSharing {
     public static func canShare(_ record: SecurityAssessmentRecord) -> Bool { record.status != .running }
 
     public static func report(from record: SecurityAssessmentRecord, installationId: String, appVersion: String, deviceName: String,
-                              sharedAt: Date = Date()) -> DiagnosticReport {
-        let r = sentinelRedacted
+                              sharedAt: Date = Date(), redaction: ShareRedaction = ShareRedaction()) -> DiagnosticReport {
+        let r = redaction.redact
         let scope = record.scope.map { "\($0.kind.label): \(r($0.value))" + ($0.localNetwork ? " (local network)" : "") }
         let findings = record.findings.map { f in
             DiagnosticReport.Finding(title: r(f.title), severity: f.severity.rawValue, confidence: f.confidence.rawValue, basis: f.basis.rawValue,
@@ -50,18 +56,19 @@ public enum SentinelReportSharing {
             createdAt: record.startedAt, completedAt: record.endedAt,
             summary: .init(status: record.status.rawValue, highestSeverity: record.highestSeverity?.rawValue, findingCount: record.findings.count),
             scope: scope, findings: findings, checks: checks, limitations: limitations, notTested: record.notTested.map(r),
-            redactor: .standard, sharedAt: sharedAt)
+            redactor: .strict, sharedAt: sharedAt)
     }
 
     /// Check My Network results. Strict redaction: IP and MAC addresses and
     /// e-mail addresses are masked, and Wi-Fi details are withheld entirely.
     public static func report(from network: AssessmentReport, reportId: String = UUID().uuidString, installationId: String,
-                              appVersion: String, deviceName: String, sharedAt: Date = Date()) -> DiagnosticReport {
-        let r = sentinelRedacted
+                              appVersion: String, deviceName: String, sharedAt: Date = Date(),
+                              redaction: ShareRedaction = ShareRedaction()) -> DiagnosticReport {
+        let r = redaction.redact
         let concerns = network.findings.filter { $0.kind == .securityConcern || $0.kind == .notice }
         let findings = concerns.map { f in
             DiagnosticReport.Finding(title: r(f.title), severity: f.kind == .securityConcern ? "medium" : "info", confidence: nil, basis: "observation",
-                                     location: f.step.title, evidence: evidence(f), explanation: r(f.limitations), remediation: f.remediation.map(r))
+                                     location: f.step.title, evidence: evidence(f, r), explanation: r(f.limitations), remediation: f.remediation.map(r))
         }
         let checks = network.findings.map { f in
             DiagnosticReport.Check(title: f.step.title, outcome: outcome(f.kind), detail: r(f.title))
@@ -79,9 +86,9 @@ public enum SentinelReportSharing {
             redactor: .strict, sharedAt: sharedAt)
     }
 
-    static func evidence(_ f: AssessmentFinding) -> [String] {
+    static func evidence(_ f: AssessmentFinding, _ r: (String) -> String) -> [String] {
         if f.step == .wifiDetails { return ["Wi-Fi details withheld from shared reports."] }
-        return f.evidence.map(sentinelRedacted)
+        return f.evidence.map(r)
     }
 
     static func outcome(_ k: AssessmentFinding.Kind) -> String {

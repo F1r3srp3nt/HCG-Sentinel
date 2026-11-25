@@ -90,8 +90,9 @@ struct NetworkCheckView: View {
             }
             .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
             .sheet(isPresented: $shareToDevice) {
-                ShareWithDeviceSheet(title: "Check My Network — \(report.headline)") { id, name, version in
-                    SentinelReportSharing.report(from: report, installationId: id, appVersion: version, deviceName: name)
+                ShareReviewSheet(title: "Check My Network — \(report.headline)") { origin, redaction in
+                    SentinelReportSharing.report(from: report, installationId: origin.installationId, appVersion: origin.appVersion,
+                                                 deviceName: origin.deviceName, redaction: redaction)
                 }
                 .environmentObject(devices)
             }

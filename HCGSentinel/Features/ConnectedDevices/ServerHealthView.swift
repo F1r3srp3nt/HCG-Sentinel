@@ -8,7 +8,7 @@ struct ServerHealthCard: View {
     var body: some View {
         SentinelCard {
             SectionLabel(text: "HCG Server health")
-            Explanation("Read-only diagnostics from the paired server: availability, TLS, hosted services and security events, exactly as the server reports them.")
+            Explanation("Read-only diagnostics from the paired server: availability, TLS, hosted services and security events, exactly as the server reports them. Viewing them sends nothing.")
             if devices.isLocalDevelopment { StatusPill(text: SentinelLinkAuthority.localDevelopmentLabel, tone: .warning) }
             NavigationLink(destination: ServerHealthView()) {
                 Label("View server health", systemImage: "stethoscope")
@@ -28,7 +28,7 @@ struct ServerHealthView: View {
 
     var body: some View {
         Screen {
-            Explanation("What HCG Server reports about itself. Sentinel only reads this; nothing here changes the server. Values the server did not send say \"Not reported\".")
+            Explanation("What HCG Server reports about itself. Sentinel only reads this; nothing here changes the server or sends anything to another device. Values the server did not send say \"Not reported\".")
             if devices.isLocalDevelopment { LocalDevelopmentBanner() }
             switch devices.health {
             case .notConnected(let why):
@@ -53,15 +53,19 @@ struct ServerHealthView: View {
                 ForEach(Array(ServerHealthPresenter.sections(d, pinnedFingerprint: devices.record?.serverFingerprint).enumerated()), id: \.offset) { _, section in
                     HealthSectionCard(section: section)
                 }
-                Button(action: { share = true }) { Label("Share with paired device", systemImage: "square.and.arrow.up") }
-                    .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
-                    .sheet(isPresented: $share) {
-                        ShareWithDeviceSheet(title: "HCG Server health — \(devices.record?.serverName ?? "HCG Server")") { id, name, version in
-                            SentinelReportSharing.report(from: d, serverName: devices.record?.serverName ?? "HCG Server", installationId: id,
-                                                         appVersion: version, deviceName: name)
-                        }
-                        .environmentObject(devices)
+                SentinelCard {
+                    SectionLabel(text: "Share (optional, separate step)")
+                    Explanation("Reading these diagnostics sends nothing anywhere, and being able to read them does not allow Sentinel to transmit them. To share a redacted copy you review the exact report, check the destination's key and confirm; nothing is sent before that.")
+                    Button(action: { share = true }) { Label("Share with paired device…", systemImage: "square.and.arrow.up") }
+                        .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
+                }
+                .sheet(isPresented: $share) {
+                    ShareReviewSheet(title: "HCG Server health — \(devices.record?.serverName ?? "HCG Server")") { origin, redaction in
+                        SentinelReportSharing.report(from: d, serverName: devices.record?.serverName ?? "HCG Server", installationId: origin.installationId,
+                                                     appVersion: origin.appVersion, deviceName: origin.deviceName, redaction: redaction)
                     }
+                    .environmentObject(devices)
+                }
             }
             Button(action: { devices.loadHealth() }) { Label("Read again", systemImage: "arrow.clockwise") }
                 .buttonStyle(SentinelButtonStyle(kind: .secondary))

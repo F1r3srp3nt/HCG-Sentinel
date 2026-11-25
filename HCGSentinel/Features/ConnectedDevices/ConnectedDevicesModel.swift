@@ -7,6 +7,13 @@ import UIKit
 /// pair this installation with an HCG Server, see the paired devices and share
 /// redacted reports with one of them.
 ///
+/// Sharing is always one explicit decision per report: the review screen shows
+/// the exact redacted payload (size, SHA-256, what was removed), the strict
+/// check result and the destination's key as reported by the pinned server;
+/// only "Send" transmits, after a fresh re-check of the destination. Nothing is
+/// sent automatically or resent later, no choice is remembered, and every
+/// outcome goes into the local share history.
+///
 /// Nothing contacts a server unless "Remote connections" is on in Settings and
 /// the user acted. HCG Server authorizes every request with HCG Connect and
 /// ERP App Access; this model never decides access itself and never enables
@@ -45,6 +52,8 @@ final class ConnectedDevicesModel: ObservableObject {
     @Published private(set) var busy = false
     /// HCG Server health (read-only diagnostics); only what the server returned.
     @Published private(set) var health: ServerHealthState = .notConnected("Open this screen while connected to read the server's health.")
+    /// The local share history (newest first). No report content.
+    @Published private(set) var shareHistory: [ShareAuditEntry] = []
 
     /// The current pairing was made in local development mode (no HCG account).
     var isLocalDevelopment: Bool { record?.isLocalDevelopment ?? false }
@@ -59,6 +68,7 @@ final class ConnectedDevicesModel: ObservableObject {
     private let auth: HCGConnectAuth
     private let session: HCGConnectSession
     private let log: ActivityLog
+    let shareAudit: ShareAuditLog
     private var client: DeviceLinkClient?
     private var syncTask: Task<Void, Never>?
     private var webSession: ASWebAuthenticationSession?
@@ -73,6 +83,9 @@ final class ConnectedDevicesModel: ObservableObject {
         self.secrets = secrets
         let file = PairingRecordFile(url: support.appendingPathComponent("DeviceLink/pairing.json"))
         recordFile = file
+        let audit = ShareAuditLog(url: support.appendingPathComponent("DeviceLink/share-audit.json"))
+        shareAudit = audit
+        _shareHistory = Published(initialValue: audit.entries())
         let info = Bundle.main.infoDictionary ?? [:]
         let cfg = HCGConnectConfiguration(contractVersion: SentinelLinkIdentity.contract,
                                           clientId: (info["HCGConnectClientID"] as? String).flatMap { $0.isEmpty ? nil : $0 },
@@ -275,7 +288,8 @@ final class ConnectedDevicesModel: ObservableObject {
                     devices = try await c.devices()
                     outbox = try await c.outbox()
                     approvals = try await c.approvals()
-                    _ = await c.resendPending()
+                    // Shares are never resent in the background: a failed send is
+                    // reported to the user, who may review and send again.
                     lastSync = Date()
                     link = .connected
                     failures = 0
@@ -341,33 +355,88 @@ final class ConnectedDevicesModel: ObservableObject {
         }
     }
 
-    // MARK: sharing
+    // MARK: sharing (explicit, reviewed, one report at a time)
 
-    /// Installations that can receive reports (never this one).
-    var recipients: [LinkInstallation] {
-        guard let d = devices else { return [] }
-        return d.installations.filter { $0.installationId != d.selfInstallationId && $0.supports(LinkCapabilityID.reportReceive) }
+    /// Devices that may receive a report: approved, non-revoked installations
+    /// of the pinned server that accept reports (never this one).
+    var shareDestinations: [ShareDestination] {
+        guard let d = devices, let r = record else { return [] }
+        return ShareDestinationCheck.eligible(d, pinnedServerFingerprint: r.serverFingerprint)
     }
 
-    func share(_ report: DiagnosticReport, to recipient: LinkInstallation) async -> String {
-        guard remoteAllowed() else { return "Turn on Remote connections in Settings first." }
-        guard let c = client else { return "This device is not paired with an HCG Server." }
-        do {
-            let r = try await c.share(report, to: recipient.installationId)
-            outbox = (try? await c.outbox()) ?? outbox
-            log.record(.devices, "Report shared with \(recipient.name) (\(r.recipientState))")
-            return r.recipientState == "online"
-                ? "Shared with \(recipient.name)."
-                : "Queued for \(recipient.name). It is offline and will receive the report when it next connects (until \(Formatters.preciseTime.string(from: r.expiresAt)))."
-        } catch let e as DeviceLinkError where e.isRetryable {
-            return "HCG Server could not be reached. The report will be sent with the same ID when the connection returns. (\(e.description))"
-        } catch {
-            return "Not shared: \(describe(error))"
+    /// What a shared report may and may not name: the server's display name is
+    /// allowed; this device's personal name, the server's address and the
+    /// signed-in e-mail never appear.
+    func shareContext() -> ShareRedaction.Context {
+        var sensitive = [UIDevice.current.name]
+        if let r = record {
+            sensitive.append(r.serverAddress)
+            if let host = r.baseURL?.host { sensitive.append(host) }
         }
+        if case .signedIn(let email?) = signIn { sensitive.append(email) }
+        return ShareRedaction.Context(allowedNames: record.map { [$0.serverName] } ?? [], sensitiveNames: sensitive)
     }
 
-    func sharingIdentity() -> (installationId: String, deviceName: String, appVersion: String)? {
-        identity.map { ($0.installationId, deviceName, appVersion) }
+    /// Who a shared report says it is from: a neutral model name, never the personal device name.
+    func shareOrigin() -> ShareOrigin? {
+        identity.map { ShareOrigin(installationId: $0.installationId, deviceName: SentinelReportSharing.neutralDeviceName(model: UIDevice.current.model),
+                                   appVersion: appVersion) }
+    }
+
+    /// Builds, redacts, encodes and checks the report once. Sends nothing.
+    func prepareShare(_ build: (ShareOrigin, ShareRedaction) -> DiagnosticReport) -> SharePayload? {
+        guard let origin = shareOrigin() else { return nil }
+        return SharePayload.prepare(context: shareContext()) { build(origin, $0) }
+    }
+
+    private func shareService() -> ReportShareService? {
+        guard let c = client, let r = record else { return nil }
+        return ReportShareService(client: c, pinnedServerFingerprint: r.serverFingerprint, audit: shareAudit)
+    }
+
+    /// The user confirmed on the review screen: re-check the destination and send exactly `payload`.
+    func send(_ payload: SharePayload, to destination: ShareDestination, messageId: String) async -> ReportShareService.SendResult {
+        guard remoteAllowed() else { return .refused("Remote connections are off in Settings, so nothing was sent.") }
+        guard record?.status == .approved, let service = shareService() else { return .refused("This device is not paired with an HCG Server.") }
+        let result = await service.send(payload, to: destination, messageId: messageId)
+        shareHistory = shareAudit.entries()
+        switch result {
+        case .sent(_, let state, _):
+            log.record(.devices, "Report shared with \(destination.name) after review (\(state))")
+            outbox = (try? await service.client.outbox()) ?? outbox
+        case .refused(let why):
+            log.record(.devices, "Report not shared: \(why)", severity: .warning)
+        case .failed(_, let e):
+            if let e = e, e.endsLink { linkEnded(e) }
+        }
+        return result
+    }
+
+    /// The user closed the review without sending. No network call.
+    func cancelShare(_ payload: SharePayload, destination: ShareDestination?) {
+        ReportShareService.cancel(payload, destination: destination, audit: shareAudit)
+        shareHistory = shareAudit.entries()
+    }
+
+    /// Withdraws a sent report while the recipient has not downloaded it.
+    func withdraw(messageId: String) async -> String {
+        guard remoteAllowed() else { return "Remote connections are off in Settings." }
+        guard let service = shareService() else { return "This device is not paired with an HCG Server." }
+        let header = outbox.first { $0.messageId.lowercased() == messageId.lowercased() }
+        let result = await service.withdraw(messageId: messageId, header: header)
+        shareHistory = shareAudit.entries()
+        outbox = (try? await service.client.outbox()) ?? outbox
+        let name = header?.to.name ?? "the recipient"
+        switch result {
+        case .withdrawn:
+            log.record(.devices, "Shared report withdrawn before \(name) downloaded it")
+            return "Withdrawn. \(name) had not downloaded it; HCG Server deleted its copy."
+        case .alreadyDelivered:
+            return "Not withdrawn: \(name) already downloaded this report, so it can no longer be recalled."
+        case .failed(let why, let e):
+            if let e = e, e.endsLink { linkEnded(e) }
+            return "Not withdrawn: \(why)"
+        }
     }
 
     // MARK: removal
