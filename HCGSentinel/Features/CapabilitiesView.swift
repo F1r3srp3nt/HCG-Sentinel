@@ -5,26 +5,54 @@ struct CapabilitiesView: View {
     @EnvironmentObject private var app: AppModel
     @EnvironmentObject private var radio: RadioModel
     @EnvironmentObject private var helper: HelperModel
+    @State private var filter: CapabilityFilter = .all
+
+    private var shown: [CapabilityState] { app.capabilities.filter(filter.matches) }
 
     var body: some View {
         Screen {
-            Explanation("Each capability is tracked on four separate facts. “Verified” is set only when a real operation succeeds during this session — never by assumption, and never from a package manager, sideloading or a file on disk.")
-            SectionLabel(text: "Backends")
-            BackendCard(title: "Standard iOS", tone: .verified, status: "Always present",
-                        detail: "Supported public APIs in the app sandbox: this app’s connection details, Check My Network, capture-file inspection, Bluetooth LE discovery and test requests.")
-            BackendCard(title: "Jailbreak helper", tone: helperTone, status: helperStatus,
-                        detail: "A separately installed privileged helper, reached on 127.0.0.1 after mutual authentication. Controls such as own-device filtering appear only for operations an authenticated helper reports. Monitor mode, packet injection and radio control are never inferred from jailbreak markers and are not part of the helper interface.")
-            BackendCard(title: "External node", tone: nodeTone, status: nodeStatus,
-                        detail: "A Mac or analysis node you operate, reached over the authenticated node protocol. Nearby Wi-Fi discovery and spectrum appear only when an authenticated node offers them, and count as verified only when a non-simulated node returns valid results.")
+            Explanation("Every capability Sentinel knows about, from the code itself. “Verified” is set only when a real operation succeeds in this session — never by assumption, and never from a package manager, sideloading or a file on disk. The last successful operation is kept as history.")
+            Picker("Filter", selection: $filter) {
+                ForEach(CapabilityFilter.allCases) { f in Text("\(f.rawValue) (\(app.capabilities.filter(f.matches).count))").tag(f) }
+            }
+            .pickerStyle(MenuPickerStyle())
+            classSummary
             ForEach(CapabilityTier.allCases, id: \.self) { tier in
-                SectionLabel(text: tier.title, tone: tier == .onDevice ? .ready : tier == .externalNode ? .info : tier == .feasibility ? .off : .accent)
-                Explanation(tierNote(tier))
-                ForEach(app.capabilities.filter { $0.descriptor.tier == tier }) { state in
-                    CapabilityCard(state: state)
+                let states = shown.filter { $0.descriptor.tier == tier }
+                if !states.isEmpty {
+                    SectionLabel(text: tier.title, tone: tier == .onDevice ? .ready : tier == .externalNode ? .info : tier == .feasibility ? .off : .accent)
+                    Explanation(tierNote(tier))
+                    ForEach(states) { state in
+                        NavigationLink(destination: CapabilityDetailView(id: state.id)) { CapabilityCard(state: state) }
+                            .buttonStyle(PlainButtonStyle())
+                    }
                 }
             }
+            if shown.isEmpty {
+                EmptyState(icon: "line.horizontal.3.decrease.circle", title: "Nothing in this filter", message: "Choose another filter to see the other capabilities.")
+            }
+            SectionLabel(text: "Backends")
+            BackendCard(title: "Standard iOS", tone: .verified, status: "Always present",
+                        detail: "Supported public APIs: connection, Wi-Fi details, ping, local discovery, Check My Network, capture files, Bluetooth LE, test requests, Security Laboratory and device security checks.")
+            BackendCard(title: "Jailbreak helper", tone: helperTone, status: helperStatus,
+                        detail: "A separately installed privileged helper, reached on 127.0.0.1 after mutual authentication. Sentinel ships none. Monitor mode, packet injection and radio control are never inferred from jailbreak markers and are not part of the helper interface.")
+            BackendCard(title: "External node", tone: nodeTone, status: nodeStatus,
+                        detail: "A Mac, HCG Server or radio node you operate. Its features count as verified only after a non-simulated node returns valid results.")
+            if app.capabilities.contains(where: { $0.lastSuccess != nil || $0.lastFailure != nil }) {
+                Button("Forget stored evidence history") { app.registry.clearHistory() }.font(.footnote)
+            }
         }
-        .navigationBarTitle("Capabilities", displayMode: .inline)
+        .navigationBarTitle("Capability Center", displayMode: .inline)
+    }
+
+    private var classSummary: some View {
+        SentinelCard {
+            SectionLabel(text: "By implementation state")
+            ForEach(CapabilityClass.allCases, id: \.self) { cls in
+                let count = app.capabilities.filter { $0.classification == cls }.count
+                if count > 0 { InfoRow(label: cls.rawValue, value: "\(count)") }
+            }
+        }
     }
 
     private var helperStatus: String {
@@ -74,7 +102,7 @@ struct CapabilitiesView: View {
     }
 }
 
-private struct CapabilityCard: View {
+struct CapabilityCard: View {
     let state: CapabilityState
 
     var body: some View {
@@ -88,6 +116,7 @@ private struct CapabilityCard: View {
                 StatusPill(text: state.readiness.label, tone: state.readiness.tone)
             }
             Explanation(state.descriptor.summary)
+            Text(state.classification.rawValue).font(.caption.weight(.semibold)).foregroundColor(Theme.textSecondary)
             VStack(alignment: .leading, spacing: 6) {
                 fact("Implementation", implementationText, implementationTone)
                 fact("Environment", environmentText, environmentTone)
@@ -193,5 +222,88 @@ private struct BackendCard: View {
             Explanation(detail)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+
+/// Everything Sentinel knows about one capability, with a way to open it and, where one exists, a bounded
+/// self-test that records verification only if it really succeeds.
+struct CapabilityDetailView: View {
+    let id: CapabilityID
+    @EnvironmentObject private var app: AppModel
+    @EnvironmentObject private var intelligence: IntelligenceModel
+
+    var body: some View {
+        Screen {
+            if let state = app.capabilityState(id) {
+                CapabilityCard(state: state)
+                let profile = state.profile
+                SentinelCard {
+                    SectionLabel(text: "Requirements")
+                    InfoRow(label: "Implementation", value: state.classification.rawValue)
+                    InfoRow(label: "Platforms", value: profile.platforms)
+                    InfoRow(label: "Hardware", value: profile.hardware)
+                    InfoRow(label: "Permissions", value: profile.permissions.isEmpty ? "—" : profile.permissions.joined(separator: "\n"))
+                    InfoRow(label: "Available now", value: availability(state))
+                    InfoRow(label: "Enabled", value: state.userEnabled ? "Yes" : "No")
+                }
+                SentinelCard {
+                    SectionLabel(text: "Evidence")
+                    InfoRow(label: "This session", value: sessionText(state))
+                    InfoRow(label: "Last success", value: state.lastSuccess.map { "\(stamp($0.at)) — \($0.text)" } ?? "Never recorded")
+                    InfoRow(label: "Last failure", value: state.lastFailure.map { "\(stamp($0.at)) — \($0.text)" } ?? "None recorded")
+                    Explanation("How it is verified: \(state.descriptor.verificationMethod)")
+                }
+                if let test = profile.selfTest { selfTestCard(test) }
+                if let section = profile.section {
+                    NavigationLink(destination: SectionContent(section: section)) {
+                        Label("Open \(section.title)", systemImage: "arrow.right.circle")
+                    }
+                    .buttonStyle(SentinelButtonStyle(kind: .secondary, fullWidth: true))
+                }
+            }
+        }
+        .navigationBarTitle(app.capabilityState(id)?.descriptor.title ?? "Capability", displayMode: .inline)
+    }
+
+    private func selfTestCard(_ test: CapabilitySelfTest) -> some View {
+        let state = intelligence.selfTests[test] ?? .idle
+        return SentinelCard(highlight: state == .running ? Theme.cyan : nil) {
+            SectionLabel(text: "Verification test")
+            Text(test.title).font(.headline).foregroundColor(Theme.textPrimary)
+            Explanation(test.scope)
+            switch state {
+            case .idle: EmptyView()
+            case .running: Text("Running…").font(.footnote).foregroundColor(Theme.textSecondary)
+            case .passed(let text): NoticeBanner(icon: "checkmark.seal", text: text, tone: .verified)
+            case .failed(let text): NoticeBanner(icon: "exclamationmark.triangle", text: text, tone: .danger)
+            }
+            Button(action: { intelligence.run(test) }) { Label("Run test", systemImage: "play.fill") }
+                .buttonStyle(SentinelButtonStyle(kind: .primary, fullWidth: true))
+                .disabled(state == .running || !(app.capabilityState(id)?.userEnabled ?? false))
+            if !(app.capabilityState(id)?.userEnabled ?? false) {
+                Explanation("Turn the capability on first (see Permissions). A test never turns anything on.")
+            }
+        }
+    }
+
+    private func availability(_ state: CapabilityState) -> String {
+        switch state.environment {
+        case .supported: return "Yes"
+        case .unsupported(let reason): return "No — \(reason)"
+        case .unknown(let reason): return "Not determined — \(reason)"
+        }
+    }
+
+    private func sessionText(_ state: CapabilityState) -> String {
+        switch state.verification {
+        case .unverified: return "Not verified yet"
+        case .verified(let at, let evidence): return "Verified at \(Formatters.time.string(from: at)) — \(evidence)"
+        case .failed(let at, let reason): return "Failed at \(Formatters.time.string(from: at)) — \(reason)"
+        }
+    }
+
+    private func stamp(_ date: Date) -> String {
+        DateFormatter.localizedString(from: date, dateStyle: .short, timeStyle: .short)
     }
 }

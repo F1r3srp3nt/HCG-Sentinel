@@ -194,6 +194,8 @@ struct BluetoothExplorerView: View {
                 .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             Label("Not devices already connected to this iPhone, such as your AirPods or Apple Watch: iOS hides devices that are connected to it and not advertising.", systemImage: "xmark.circle")
                 .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Label("Not a connection. Everything here is what devices broadcast to anyone nearby. Reading a device's services or data needs an authenticated connection to it, which Sentinel never makes; \"Connectable\" only means the device says it would accept one.", systemImage: "xmark.circle")
+                .font(.footnote).foregroundColor(Theme.textSecondary).fixedSize(horizontal: false, vertical: true)
             Explanation("Unknown devices (no broadcast name) are normal and are not a sign of anything malicious. Sentinel never pairs with or connects to devices.")
         }
     }

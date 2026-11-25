@@ -77,6 +77,19 @@ struct SectionContent: View {
         case .radio: RadioLabView()
         case .requests: RequestComposerView()
         case .devices: ConnectedDevicesView()
+        case .center: SecurityCenterView()
+        case .wifi: WiFiView()
+        case .ping: PingView()
+        case .localNetwork: LocalNetworkView()
+        case .deviceSecurity: DeviceSecurityView()
+        case .captureInspector: NetworkInspectorView(showsNetwork: false)
+        case .secretScanner: SecretScannerView()
+        case .exposureCheck: ExposureCheckView()
+        case .authLab: AuthLabView()
+        case .externalNodes: ExternalNodesView()
+        case .reports: SecurityReportsView()
+        case .ecosystem: EcosystemView()
+        case .serverHealth: ServerHealthView()
         case .capabilities: CapabilitiesView()
         case .settings: SettingsView()
         }
@@ -128,7 +141,7 @@ private struct RegularLayout: View {
             .padding(.top, 18)
             .padding(.bottom, 12)
 
-            ForEach(SentinelSection.allCases) { section in
+            ForEach(Router.sidebarSections) { section in
                 Button(action: { router.open(section) }) {
                     HStack(spacing: 12) {
                         Image(systemName: section.icon).frame(width: 24)

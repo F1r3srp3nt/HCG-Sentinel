@@ -7,11 +7,48 @@ struct NetworkInspectorView: View {
     @EnvironmentObject private var connection: ConnectionMonitor
     @State private var showPicker = false
     @State private var pendingDelete: StoredCapture?
+    /// False for the Capture Inspector destination, which shows only the capture files.
+    var showsNetwork = true
 
     var body: some View {
         Screen {
             if network.previewMode { PreviewBanner() }
+            if showsNetwork { networkSection }
+            SectionLabel(text: "Capture files")
+            NoticeBanner(icon: "doc.text.magnifyingglass",
+                         text: "Sentinel inspects capture files recorded elsewhere. It has no verified live-capture backend, so it does not capture this device’s traffic and cannot decrypt HTTPS.")
+            importCard
+            savedCard
+            NavigationLink(destination: captureDestination, isActive: captureIsOpen) { EmptyView() }
+                .hidden()
+        }
+        .navigationBarTitle(showsNetwork ? "Network Intelligence" : "Capture Inspector", displayMode: .inline)
+        .sheet(isPresented: $showPicker) {
+            DocumentPicker { url in network.importFile(at: url) }
+                .ignoresSafeArea()
+        }
+        .alert(item: $pendingDelete) { item in
+            Alert(title: Text("Delete this capture?"),
+                  message: Text("“\(item.originalName)” will be removed from Sentinel’s storage. This cannot be undone."),
+                  primaryButton: .destructive(Text("Delete")) { network.delete(item) },
+                  secondaryButton: .cancel())
+        }
+    }
+
+    @ViewBuilder private var networkSection: some View {
             NetworkToolsCard()
+            NavigationLink(destination: SecurityReportsView()) {
+                SentinelCard {
+                    AdaptiveStack {
+                        Image(systemName: "clock.arrow.circlepath").foregroundColor(Theme.cyan)
+                        Text("Diagnostic history and reports").font(.headline).foregroundColor(Theme.textPrimary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").foregroundColor(Theme.textSecondary)
+                    }
+                    Explanation("Past Check My Network runs and pings, with addresses masked, ready to export.")
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
             SectionLabel(text: "This app’s connection")
             NavigationLink(destination: NetworkCheckView()) {
                 SentinelCard(highlight: Theme.cyan) {
@@ -28,25 +65,7 @@ struct NetworkInspectorView: View {
             }
             .buttonStyle(PlainButtonStyle())
             connectionCard
-            SectionLabel(text: "Capture files")
-            NoticeBanner(icon: "doc.text.magnifyingglass",
-                         text: "Sentinel inspects capture files recorded elsewhere. It has no verified live-capture backend, so it does not capture this device’s traffic and cannot decrypt HTTPS.")
-            importCard
-            savedCard
-            NavigationLink(destination: captureDestination, isActive: captureIsOpen) { EmptyView() }
-                .hidden()
-        }
-        .navigationBarTitle("Network Inspector", displayMode: .inline)
-        .sheet(isPresented: $showPicker) {
-            DocumentPicker { url in network.importFile(at: url) }
-                .ignoresSafeArea()
-        }
-        .alert(item: $pendingDelete) { item in
-            Alert(title: Text("Delete this capture?"),
-                  message: Text("“\(item.originalName)” will be removed from Sentinel’s storage. This cannot be undone."),
-                  primaryButton: .destructive(Text("Delete")) { network.delete(item) },
-                  secondaryButton: .cancel())
-        }
+            Explanation("Measured from this iPhone. Router settings, other devices' traffic and radio-level data need an external diagnostic node (External Nodes).")
     }
 
     private var captureIsOpen: Binding<Bool> {
@@ -211,6 +230,7 @@ struct CaptureView: View {
         return Screen {
             sourceBanner
             summaryCard
+            CaptureStatisticsCard(capture: open.capture)
             if !open.capture.warnings.isEmpty { warningsCard }
             TextField("Filter by address, port, protocol or text", text: $filter)
                 .technicalInput()

@@ -13,6 +13,7 @@ struct DashboardView: View {
     @EnvironmentObject private var lab: SecurityLabModel
     @EnvironmentObject private var ping: PingModel
     @EnvironmentObject private var localNetwork: LocalNetworkModel
+    @EnvironmentObject private var intelligence: IntelligenceModel
     @EnvironmentObject private var devices: ConnectedDevicesModel
     @Environment(\.sizeCategory) private var sizeCategory
 
@@ -39,6 +40,8 @@ struct DashboardView: View {
             }
             SectionLabel(text: "Quick access")
             LazyVGrid(columns: tileColumns, spacing: 12) {
+                tile(.center, status: "Every Sentinel screen")
+                tile(.deviceSecurity, status: intelligenceStatus)
                 tile(.networkCheck, status: checkStatus)
                 tile(.securityLab, status: securityLabStatus)
                 tile(.network, status: networkStatus)
@@ -185,12 +188,13 @@ struct DashboardView: View {
 
     private var wifiToolStatus: ToolStatus {
         guard let snapshot = connection.snapshot else { return .idle }
-        return snapshot.usesWiFi ? .completed : .unsupported
+        // Not being on Wi-Fi is not "unsupported": the connection details simply have nothing to show.
+        return snapshot.usesWiFi ? .completed : .idle
     }
 
     private var wifiSummary: String {
         guard let snapshot = connection.snapshot else { return "Waiting for iOS to report the connection" }
-        guard snapshot.usesWiFi else { return "Not connected to Wi-Fi. Nearby-network scanning is not available to iOS apps." }
+        guard snapshot.usesWiFi else { return "Not on Wi-Fi now (\(snapshot.headline)). Nearby-network scanning is not available to iOS apps." }
         if let v4 = snapshot.ipv4Networks.first(where: { $0.interface.hasPrefix("en") }) {
             return "Connected · \(v4.address) on \(v4.network)\(snapshot.gateways.isEmpty ? "" : " · gateway \(snapshot.gateways[0])")"
         }
@@ -205,6 +209,12 @@ struct DashboardView: View {
         if case .finished = localNetwork.browseState { parts.append("\(localNetwork.services.count) Bonjour service(s)") }
         if localNetwork.sweepFinishedAt != nil { parts.append("\(localNetwork.sweepResults.filter { $0.responded }.count) address(es) answered the last sweep") }
         return parts.isEmpty ? "Not run this session" : parts.joined(separator: " · ")
+    }
+
+    private var intelligenceStatus: String {
+        guard let report = intelligence.deviceSecurity else { return "Not run this session" }
+        let attention = report.checks.filter { $0.outcome == .fail || $0.outcome == .warning }.count
+        return attention == 0 ? "No issues found" : "\(attention) need attention"
     }
 
     private var pingSummary: String {

@@ -23,10 +23,10 @@ concurrency:
 
 env:
   PKG: com.hakmicapitalgroup.hcgsentinel
-  PKG_VERSION: 0.1.0~beta2
+  PKG_VERSION: 0.1.0~beta3
   PKG_NAME: HCG Sentinel Unleashed
   DESCRIPTION: "Toolkit for authorised testing of your own devices, networks and services: Bluetooth LE discovery, Wi-Fi and local network diagnostics, ping. Candidate beta, packaged for rootless jailbreaks."
-  DEB_ARTIFACT: hcg-sentinel-unleashed-0.1.0-beta2-deb
+  DEB_ARTIFACT: hcg-sentinel-unleashed-0.1.0-beta3-deb
   # HCG Executable Maker feature/unleashify, the commit after the one that built 0.1.0~beta1 (73edc9d): it only adds the
   # recorded beta1 approval and CI changes, so packaging and validation are the same code that produced beta1.
   MAKER_COMMIT: c074245aed5ff3208721d55dc4a7fe2013b4b193
@@ -89,20 +89,22 @@ jobs:
           dotnet maker/src/HCG.ExecutableMaker.App/bin/Release/net10.0/HCGExecutableMaker.dll \
             --rootless-deb "$OUT/HCGSentinelModern.xcarchive" --ldid "$(command -v ldid)" \
             --package "$PKG" --package-version "$PKG_VERSION" --name "$PKG_NAME" --description "$DESCRIPTION" \
-            --device-ios 16.5 --published "0.1.0~beta1=$BETA1_SHA256" \
+            --device-ios 17.4 --published "0.1.0~beta1=$BETA1_SHA256" \
             --repository "${{ github.repository }}" --commit "$SRC_COMMIT" \
             --ci-run "${{ github.run_id }}" --ci-artifact "$DEB_ARTIFACT" \
             --ci-run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
             --ci-repository "${{ github.repository }}" --ci-commit "$SRC_COMMIT" \
             --built-with "Xcode 26.6, scheme HCGSentinelModern, Release, CODE_SIGNING_ALLOWED=NO; ldid via Unleashify" \
-            --production-access undecided --device-target "Dopamine (rootless) iPhone, iOS 15.0 or later; owner's test phone" \
-            --change "Public name HCG Sentinel Unleashed (Home Screen name stays Sentinel; package ID and bundle ID unchanged)." \
-            --change "Bluetooth: scanning can be turned on from the Bluetooth screen; a scan iOS never answers ends with the real state after 20 s; continuous signal updates on by default; diagnostics card." \
-            --change "Wi-Fi: current connection (interface, IPv4 and subnet, IPv6, gateway, connection changes). Nearby networks are reported as unsupported, never invented." \
-            --change "Local Network: Bonjour browsing; sweep of a private range you confirm you are authorised to test (at most 254 addresses)." \
-            --change "Ping: real ICMP Echo, or a TCP connect test that is labelled as such; statistics and session history." \
+            --production-access undecided --device-target "iPhone 11 Pro Max, iOS 17.4, Dopamine (rootless); any rootless iPhone on iOS 15.0 or later" \
+            --change "Security Intelligence Center: every Sentinel screen in one place, from the same registry HCG Nexus links use; new tabs Command, Network, Wireless, Center, Capabilities." \
+            --change "Capability Center: filters, per-capability requirements, availability, verification evidence, last successful operation, Open, and local self-tests." \
+            --change "Device Security: read-only passcode, biometrics, system, data protection, transport security, environment and package integrity checks." \
+            --change "Security Reports: imports HCG System Tester's hcg.diagnostic-report/1 files; network diagnostic history with export." \
+            --change "Capture Inspector statistics, timeline and privacy-preserving report; Request Composer TLS details, timing and history." \
+            --change "External Nodes and HCG Ecosystem screens with each integration's real status." \
             --known-issue "Not yet device-tested. Bluetooth, Wi-Fi, Bonjour, sweep and ICMP need a physical iPhone." \
             --known-issue "Nearby Wi-Fi networks and the SSID are not available: iOS does not provide them to this build (no entitlement, no privileged helper)." \
+            --known-issue "Package integrity compares installed files with dpkg's file list; the package ships no checksums, so file contents are not compared." \
             --known-issue "HCG Connect sign-in is not included: Sentinel has no registered HCG Connect client yet." \
             --timestamp "$stamp" --out "$OUT/deb" | tee "$OUT/unleashify.log"
           H="$(ls -d "$OUT"/deb/*-candidate-handoff)"; echo "HANDOFF=$H" >> "$GITHUB_ENV"
@@ -142,7 +144,7 @@ jobs:
           grep -qx "Architecture: iphoneos-arm64" "$x/DEBIAN/control"
           test "$(plutil -extract CFBundleIdentifier raw "$app/Info.plist")" = com.hcg.sentinel
           test "$(plutil -extract CFBundleDisplayName raw "$app/Info.plist")" = Sentinel
-          test "$(plutil -extract CFBundleVersion raw "$app/Info.plist")" = 2
+          test "$(plutil -extract CFBundleVersion raw "$app/Info.plist")" = 3
           # No entitlement may appear silently: the same (none) as beta1.
           test "$(ldid -e "$app/HCGSentinelModern" 2>/dev/null)" = "$(ldid -e "$old/HCGSentinelModern" 2>/dev/null)"
           # Everything installs under /var/jb, at the same path as beta1.
@@ -202,7 +204,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: hcg-sentinel-unleashed-0.1.0-beta2-handoff
+          name: hcg-sentinel-unleashed-0.1.0-beta3-handoff
           path: |
             ${{ env.HANDOFF }}
             ${{ github.workspace }}/out/*.txt

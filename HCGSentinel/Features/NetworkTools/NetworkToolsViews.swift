@@ -122,9 +122,8 @@ struct WiFiView: View {
                     InfoRow(label: "IPv6 address", value: address.address, mono: true)
                 }
                 InfoRow(label: "Default gateway", value: snapshot.gateways.isEmpty ? "Not reported by iOS" : snapshot.gateways.joined(separator: ", "), mono: true)
-                InfoRow(label: "IPv4 / IPv6", value: "\(snapshot.supportsIPv4 ? "IPv4 available" : "no IPv4") · \(snapshot.supportsIPv6 ? "IPv6 available" : "no IPv6")")
-                InfoRow(label: "DNS", value: snapshot.supportsDNS ? "A resolver is available" : "No resolver reported")
-                Explanation("iOS does not give apps the DNS server addresses. Check My Network tests whether DNS answers correctly instead.")
+                InfoRow(label: "iOS path report", value: "IPv4 route \(snapshot.supportsIPv4 ? "yes" : "no") · IPv6 route \(snapshot.supportsIPv6 ? "yes" : "no") · DNS \(snapshot.supportsDNS ? "yes" : "no")")
+                Explanation("The path report is iOS's own view of which routes it considers usable for this app; it can say \"no\" (for example in the Simulator) even when an address is assigned. iOS does not give apps the DNS server addresses; Check My Network tests whether DNS answers correctly instead.")
                 Text("Updated \(Formatters.time.string(from: snapshot.updatedAt))").font(.caption).foregroundColor(Theme.textSecondary)
             } else {
                 Explanation("iOS has not reported the connection yet.")

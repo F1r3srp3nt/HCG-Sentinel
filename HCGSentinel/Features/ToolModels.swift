@@ -462,6 +462,7 @@ final class RequestModel: ObservableObject {
     @Published private(set) var remoteConnectionsEnabled = false
     @Published private(set) var previewMode = false
     @Published var bodyFormat: ResponseBodyFormat = .text
+    @Published private(set) var history: [RequestHistoryEntry] = []
 
     private let composer: RequestComposer
     private let registry: CapabilityRegistry
@@ -473,6 +474,7 @@ final class RequestModel: ObservableObject {
         composer.onChange = { [weak self] in
             guard let self = self else { return }
             self.state = self.composer.state
+            self.history = self.composer.history
             if case .failed(.execution(let error)) = self.composer.state, error != .cancelled {
                 self.registry.recordFailure(.requestComposer, reason: error.userMessage)
             }
@@ -485,6 +487,11 @@ final class RequestModel: ObservableObject {
     }
 
     var isSending: Bool { composer.isSending }
+
+    func clearHistory() {
+        composer.clearHistory()
+        history = []
+    }
     var canSend: Bool { remoteConnectionsEnabled && !previewMode && !endpoints.isEmpty && !isSending }
 
     func apply(_ settings: SentinelSettings) {

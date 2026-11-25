@@ -62,9 +62,13 @@ final class PingModel: ObservableObject {
 
     private var session: PingSession?
     private let log: ActivityLog
+    private let registry: CapabilityRegistry?
+    /// Called once per finished run (for the network diagnostic history).
+    var onFinished: ((Run) -> Void)?
 
-    init(log: ActivityLog) {
+    init(log: ActivityLog, registry: CapabilityRegistry? = nil) {
         self.log = log
+        self.registry = registry
     }
 
     var isRunning: Bool { session != nil }
@@ -116,6 +120,9 @@ final class PingModel: ObservableObject {
             run.target = target
         case .probe(let result):
             run.results.append(result)
+            if case .reply(let ms) = result.outcome, case .icmpEcho = run.configuration.method {
+                registry?.recordVerified(.icmpPing, evidence: String(format: "ICMP Echo Reply received in %.1f ms", ms))
+            }
         case .failed(let failure):
             run.failure = failure.message
         case .finished(let cancelled):
@@ -123,6 +130,7 @@ final class PingModel: ObservableObject {
             run.cancelled = cancelled
             self.session = nil
             history.insert(run, at: 0)
+            onFinished?(run)
             if history.count > PingModel.historyLimit { history.removeLast(history.count - PingModel.historyLimit) }
             let stats = run.statistics
             log.record(.network, run.failure.map { "Ping to \(run.host) failed: \($0)" }
@@ -235,10 +243,12 @@ final class LocalNetworkModel: ObservableObject {
     private var stopWork: DispatchWorkItem?
     private var sweep: LocalSweep?
     private let log: ActivityLog
+    private let registry: CapabilityRegistry?
     private let queue = DispatchQueue(label: "sentinel.bonjour")
 
-    init(log: ActivityLog) {
+    init(log: ActivityLog, registry: CapabilityRegistry? = nil) {
         self.log = log
+        self.registry = registry
     }
 
     var isBrowsing: Bool { if case .browsing = browseState { return true }; return false }
@@ -326,6 +336,9 @@ final class LocalNetworkModel: ObservableObject {
                     self.services[index].addresses = addresses
                     self.services[index].resolveError = error
                     self.resolvers[key] = nil
+                    if host != nil || !addresses.isEmpty {
+                        self.registry?.recordVerified(.localDiscovery, evidence: "A Bonjour service announced on this network was resolved")
+                    }
                 }
             }
             resolvers[key] = resolver
@@ -369,6 +382,9 @@ final class LocalNetworkModel: ObservableObject {
         switch event {
         case .host(let host):
             sweepResults.append(host)
+            if host.responded {
+                registry?.recordVerified(.localDiscovery, evidence: "An address in your confirmed range answered a probe")
+            }
             sweepResults.sort { $0.address < $1.address }
         case .progress(let done, let total):
             sweepProgress = (done, total)
