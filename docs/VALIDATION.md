@@ -5,6 +5,24 @@ What has actually been checked, and how. "Not done" means exactly that.
 Sources: CI runs on GitHub Actions. Complete logs and `.xcresult` bundles are attached to each *Archive check*
 run as artifacts: <https://github.com/F1r3srp3nt/HCG-Sentinel/actions/workflows/archive.yml>
 
+## Beta3: 0.1.0~beta3 (25 November 2026)
+
+HCG Sentinel Unleashed 0.1.0~beta3. Package built from `91adcb8`; the later commits `ad2ee69` and `6704144` change
+only tests and documentation, and every check below passed on `6704144` unless stated. No result comes from a device.
+
+| Check | Result |
+| --- | --- |
+| SentinelCore on Linux | **Passed**, 0 skipped: new tests for the capability classes, filters and persisted evidence; every navigation destination round-trips and the existing Nexus/System Tester link names are unchanged; device security (dpkg parsing, intact / tampered / unreadable bundles, standard install); report import (valid, wrong schema, too large, leaked private key refused, and HCG System Tester's exact export format); capture statistics, timeline and pseudonymized report; network history masking and bounds |
+| App and core tests in the iOS Simulator (Xcode 26.6) | **Passed** ("TEST SUCCEEDED"): core 292 tests, 7 skipped (live local services / mock node not reachable from that step); app tests including the new tab set and link-opens-as-sheet check. One stale router test was updated (Capabilities is now a tab) |
+| Build matrix | **Passed**: legacy `HCGSentinel` (iOS 14.7) Debug and Release on Xcode 26.6; `HCGSentinelModern` Debug and Release on Xcode 16.4 and 26.6; both targets side by side; modern Simulator tests and device archive on the newest Xcode; archive check (legacy on 16.4 and 26.6, modern on 26.6); Maker `fix/sentinel-end-to-end`. Maker `main` fails as before (its known scheme bug; allowed to fail) |
+| Screenshots (iPhone and iPad Simulator, standard to largest accessibility text) | **Passed**: Command, Capability Center (filter, class counts, verified card), Network Intelligence, Wireless; nothing clipped |
+| Package | `com.hakmicapitalgroup.hcgsentinel` `0.1.0~beta3` `iphoneos-arm64`, Name "HCG Sentinel Unleashed", SHA-256 `63f9b54d0a877412b75a205059f5a37ec6c4c829ab1c592413948e0df9834abc`, 4,216,396 bytes, run 45545331863 |
+| Maker's rootless validator, iOS 16.5 and 17.4 | **Passed** (binary minimum 15.0; no entitlements; scripts unchanged; all paths under /var/jb; version sorts above the published 0.1.0~beta1) |
+| HCG Repo inspector and importer dry run | **OK**; bytes validated; not served until the owner approves; with beta1's approval kept and a labelled hypothetical one for beta3 in a throwaway copy: **VALIDATED** |
+| Upgrade and rollback (Linux dpkg sandbox) | **Passed**: beta1 → beta3 → beta1 → beta3 → remove (0 files) → purge. (The step labels in that job still read "beta2"; the steps use the package version from the workflow.) |
+| Physical device | **Not tested.** Checklist: [BETA3_CHECKLIST.md](BETA3_CHECKLIST.md) (iPhone 11 Pro Max, iOS 17.4, Dopamine) |
+| Publication | **Not done.** Awaiting the owner's approval: [release/0.1.0-beta3.md](release/0.1.0-beta3.md) |
+
 ## Beta2: 0.1.0~beta2 (21 November 2026)
 
 HCG Sentinel Unleashed 0.1.0~beta2, source commit `680cb3f`. Every result below comes from a CI run on that commit;
