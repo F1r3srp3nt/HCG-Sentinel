@@ -5,6 +5,10 @@
 	};
 	objectVersion = 54;
 	objects = {
+		018098BFB89663C2088B0E86 = {
+			isa = PBXBuildFile;
+			fileRef = 54910A65305A4E7760DCD057;
+		};
 		03DB76429F34AF7AD922F784 = {
 			isa = PBXBuildFile;
 			fileRef = 8F0E96B575BE00FE93154471;
@@ -44,6 +48,10 @@
 		25473607A8F41989361A9211 = {
 			isa = PBXBuildFile;
 			fileRef = 4751A22D65F1D1961EC45604;
+		};
+		269D0E5977A5265E2F41A9D9 = {
+			isa = PBXBuildFile;
+			fileRef = 54910A65305A4E7760DCD057;
 		};
 		26D59DA831A38EA6B7CB311C = {
 			isa = PBXBuildFile;
@@ -368,6 +376,12 @@
 			path = NetworkInspectorView.swift;
 			sourceTree = "<group>";
 		};
+		54910A65305A4E7760DCD057 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = ServerHealthView.swift;
+			sourceTree = "<group>";
+		};
 		5C4848C94B72C491235569FA = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -625,6 +639,7 @@
 			children = (
 				D03CA5EC342B3F5F6EB47C8F,
 				7356EC2B93D71AD29E83F90E,
+				54910A65305A4E7760DCD057,
 			);
 			path = ConnectedDevices;
 			sourceTree = "<group>";
@@ -866,6 +881,7 @@
 				E698F4B5A7F650E848DD6916,
 				34200B74491ED9136347B270,
 				1C91177D478D6A2C167A3779,
+				018098BFB89663C2088B0E86,
 				D1306221E2CD99F7610FEAFF,
 				4F7DDC71E44C334F93985BC4,
 				2D1E1A10BBC58CBC5A90A567,
@@ -914,6 +930,7 @@
 				097A1B3FD549A24C3A5B094D,
 				FFDF24D0715470007D3E0374,
 				D3C3621F802C458314FEAA2D,
+				269D0E5977A5265E2F41A9D9,
 				EB57B4772751E74F60188A1A,
 				3099FDA331A9AED9794C57BF,
 				5AC496A0228B274533FEFAD5,

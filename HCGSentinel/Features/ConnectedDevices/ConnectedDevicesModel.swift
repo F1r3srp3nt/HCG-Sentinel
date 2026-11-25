@@ -11,6 +11,11 @@ import UIKit
 /// the user acted. HCG Server authorizes every request with HCG Connect and
 /// ERP App Access; this model never decides access itself and never enables
 /// anything on another device.
+///
+/// Local development pairing: only when the invitation says the server is in
+/// local development mode does Sentinel pair without HCG Connect (empty token
+/// provider). The pairing record keeps that mode, and every screen that shows
+/// such a connection says "LOCAL DEVELOPMENT — not an HCG account".
 @MainActor
 final class ConnectedDevicesModel: ObservableObject {
     enum SignIn: Equatable {
@@ -38,6 +43,11 @@ final class ConnectedDevicesModel: ObservableObject {
     @Published private(set) var lastSync: Date?
     @Published var message: String?
     @Published private(set) var busy = false
+    /// HCG Server health (read-only diagnostics); only what the server returned.
+    @Published private(set) var health: ServerHealthState = .notConnected("Open this screen while connected to read the server's health.")
+
+    /// The current pairing was made in local development mode (no HCG account).
+    var isLocalDevelopment: Bool { record?.isLocalDevelopment ?? false }
 
     let identity: InstallationIdentity?
     let identityProblem: String?
@@ -104,7 +114,8 @@ final class ConnectedDevicesModel: ObservableObject {
     private func rebuildClient() {
         guard let r = record, let base = r.baseURL, let id = identity else { client = nil; return }
         client = DeviceLinkClient(configuration: DeviceLinkConfiguration(baseURL: base, serverFingerprint: r.serverFingerprint, installationId: id.installationId),
-                                  signer: id.signer, transport: PinnedSessionTransport(fingerprint: r.serverFingerprint), tokens: session)
+                                  signer: id.signer, transport: PinnedSessionTransport(fingerprint: r.serverFingerprint),
+                                  tokens: SentinelLinkAuthority.tokens(for: r, hcgConnect: session))
     }
 
     private func saveRecord(_ r: PairingRecord?) {
@@ -160,7 +171,8 @@ final class ConnectedDevicesModel: ObservableObject {
         Task {
             await session.signOut()
             signIn = .signedOut
-            stopSync()
+            // A local-development pairing never used the HCG Connect session.
+            if !isLocalDevelopment { stopSync() }
         }
     }
 
@@ -175,8 +187,10 @@ final class ConnectedDevicesModel: ObservableObject {
             return
         }
         guard let base = invitation.baseURL else { message = "The invitation has no usable server address."; return }
+        // HCG Connect unless the invitation itself says local development.
         let c = DeviceLinkClient(configuration: DeviceLinkConfiguration(baseURL: base, serverFingerprint: invitation.fingerprint, installationId: id.installationId),
-                                 signer: id.signer, transport: PinnedSessionTransport(fingerprint: invitation.fingerprint), tokens: session)
+                                 signer: id.signer, transport: PinnedSessionTransport(fingerprint: invitation.fingerprint),
+                                 tokens: SentinelLinkAuthority.tokens(for: invitation, hcgConnect: session))
         let info = SentinelLinkIdentity.installationInfo(identity: id, name: deviceName, platform: "iOS \(UIDevice.current.systemVersion)",
                                                          appVersion: appVersion, deviceId: UIDevice.current.identifierForVendor?.uuidString.lowercased())
         busy = true
@@ -187,7 +201,9 @@ final class ConnectedDevicesModel: ObservableObject {
                 let r = PairingRecord(invitation: invitation, requestId: st.requestId, status: .pending)
                 saveRecord(r)
                 link = .pairing(r)
-                log.record(.devices, "Pairing requested with \(invitation.hostName); waiting for approval on the server")
+                log.record(.devices, "Pairing requested with \(invitation.hostName)"
+                           + (invitation.isLocalDevelopment ? " (\(SentinelLinkAuthority.localDevelopmentLabel))" : "")
+                           + "; waiting for approval on the server")
                 pollPairing()
             } catch {
                 message = describe(error)
@@ -217,7 +233,7 @@ final class ConnectedDevicesModel: ObservableObject {
                     default: break
                     }
                 } catch let e as DeviceLinkError where !e.isRetryable {
-                    link = .ended(e.description)
+                    if e.endsLink { linkEnded(e) } else { link = .ended(e.description) }
                     return
                 } catch {}
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -266,13 +282,7 @@ final class ConnectedDevicesModel: ObservableObject {
                     try? await Task.sleep(nanoseconds: UInt64(DeviceLinkProtocol.inboxInterval * 1_000_000_000))
                 } catch let e as DeviceLinkError {
                     if e.endsLink {
-                        link = .ended(e.description)
-                        if e.code == "device_revoked" || e.code == "unknown_installation" {
-                            var n = record; n?.status = .removed
-                            saveRecord(n)
-                        }
-                        if e.code == "hcg_session_ended" { signIn = .ended(e.description) }
-                        log.record(.devices, "Connected devices stopped: \(e.code)", severity: .warning)
+                        linkEnded(e)
                         return
                     }
                     failures += 1
@@ -282,6 +292,51 @@ final class ConnectedDevicesModel: ObservableObject {
                 } catch {
                     return
                 }
+            }
+        }
+    }
+
+    /// The server ended the link (never retried). `authority_changed` means the
+    /// server switched between HCG Connect and local development pairing: the
+    /// pairing is over and the user pairs again with a new invitation.
+    private func linkEnded(_ e: DeviceLinkError) {
+        stopSync()
+        link = .ended(SentinelLinkAuthority.endedMessage(e))
+        if SentinelLinkAuthority.needsNewPairing(e) {
+            var n = record; n?.status = .removed
+            saveRecord(n)
+        }
+        if e.code == "hcg_session_ended" { signIn = .ended(e.description) }
+        health = .notConnected(SentinelLinkAuthority.endedMessage(e))
+        log.record(.devices, "Connected devices stopped: \(e.code)", severity: .warning)
+    }
+
+    // MARK: HCG Server health (read only)
+
+    /// Reads `link/diagnostics` once. Shows the real error when it fails and
+    /// never fills in values the server did not send.
+    func loadHealth() {
+        guard let r = record, r.status == .approved else {
+            health = .notConnected(record?.status == .pending ? "Not connected: the server owner has not approved this device yet."
+                                                              : "Not connected: this device is not paired with an HCG Server.")
+            return
+        }
+        guard remoteAllowed() else {
+            health = .notConnected("Not connected: Remote connections are off in Settings, so Sentinel does not contact HCG Server.")
+            return
+        }
+        guard let c = client else { health = .notConnected("Not connected: \(identityProblem ?? "no usable server address.")"); return }
+        if case .loading = health { return }
+        health = .loading
+        Task {
+            do {
+                let d = try await c.diagnostics()
+                health = .loaded(d, fetchedAt: Date())
+            } catch let e as DeviceLinkError where e.endsLink {
+                linkEnded(e)
+                health = .failed(SentinelLinkAuthority.endedMessage(e))
+            } catch {
+                health = .failed(describe(error))
             }
         }
     }
@@ -335,6 +390,7 @@ final class ConnectedDevicesModel: ObservableObject {
         devices = nil
         outbox = []
         approvals = nil
+        health = .notConnected("Not connected: this device is not paired with an HCG Server.")
         link = .notPaired
         InstallationIdentity.reset(store: secrets)
         log.record(.devices, "Pairing forgotten on this device")

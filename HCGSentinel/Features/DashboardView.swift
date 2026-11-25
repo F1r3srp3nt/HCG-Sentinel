@@ -258,7 +258,9 @@ struct DashboardView: View {
         switch devices.link {
         case .notPaired: return "Not paired"
         case .pairing: return "Awaiting approval"
-        case .connected: return "\(devices.devices?.installations.count ?? 0) paired"
+        case .connected:
+            let paired = "\(devices.devices?.installations.count ?? 0) paired"
+            return devices.isLocalDevelopment ? paired + " · " + SentinelLinkAuthority.localDevelopmentLabel : paired
         case .offline: return "Server offline"
         case .paused: return "Paused"
         case .ended: return "Disconnected"

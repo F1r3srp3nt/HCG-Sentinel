@@ -29,6 +29,7 @@ struct ConnectedDevicesView: View {
                 ServerCard(confirmRemove: $confirmRemove)
             }
             if devices.record?.status == .approved {
+                ServerHealthCard()
                 PairedDevicesCard()
                 SharedReportsCard()
                 ApprovalsCard()
@@ -51,6 +52,9 @@ private struct AccountCard: View {
     var body: some View {
         SentinelCard {
             SectionLabel(text: "HCG Connect account")
+            if devices.isLocalDevelopment {
+                Explanation("The current pairing does not use this account: it is \(SentinelLinkAuthority.localDevelopmentLabel).")
+            }
             switch devices.signIn {
             case .notConfigured(let why):
                 StatusPill(text: "Not configured", tone: .off)
@@ -138,6 +142,8 @@ private struct ServerCard: View {
                 status
             }
             if let r = devices.record {
+                if r.isLocalDevelopment { LocalDevelopmentBanner() }
+                InfoRow(label: "Authority", value: r.isLocalDevelopment ? SentinelLinkAuthority.localDevelopmentLabel : "HCG Connect")
                 InfoRow(label: "Server", value: r.serverName)
                 InfoRow(label: "Address", value: r.serverAddress, mono: true)
                 InfoRow(label: "Server key", value: LinkCrypto.displayFingerprint(r.serverFingerprint), mono: true)
@@ -184,6 +190,9 @@ struct LinkDeviceRow: View {
                 Spacer(minLength: 0)
                 StatusPill(text: isSelf ? "LOCAL" : "REMOTE", tone: isSelf ? .ready : .accent)
                 StatusPill(text: presence, tone: device.state == .online ? .verified : .off)
+            }
+            if SentinelLinkAuthority.isLocalDevelopment(device) {
+                StatusPill(text: SentinelLinkAuthority.localDevelopmentLabel, tone: .warning)
             }
             Text(appLabel).font(.footnote).foregroundColor(Theme.textSecondary)
             if let seen = device.lastSeenAt, device.state != .online {
@@ -285,6 +294,7 @@ struct ShareWithDeviceSheet: View {
         NavContainer {
             Screen {
                 Explanation("The report is redacted on this device before it is sent: credentials, tokens and passwords are removed, and network names and addresses are withheld. The receiving app shows it as text only; nothing in it is ever run.")
+                if devices.isLocalDevelopment { LocalDevelopmentBanner() }
                 SentinelCard {
                     SectionLabel(text: "Report")
                     Text(title).font(.subheadline).foregroundColor(Theme.textPrimary)
@@ -318,5 +328,14 @@ struct ShareWithDeviceSheet: View {
             result = await devices.share(report, to: target)
             sending = false
         }
+    }
+}
+
+/// Shown wherever a local-development connection appears.
+struct LocalDevelopmentBanner: View {
+    var body: some View {
+        NoticeBanner(icon: "hammer",
+                     text: SentinelLinkAuthority.localDevelopmentLabel + ". " + SentinelLinkAuthority.localDevelopmentExplanation,
+                     tone: .warning)
     }
 }

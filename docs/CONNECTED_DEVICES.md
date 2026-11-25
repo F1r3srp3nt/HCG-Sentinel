@@ -28,6 +28,44 @@ sends.
 5. **Disconnect and remove this device** tells the server (signed with the device key), forgets the pairing and the
    device key. The owner can also remove the device on the server: Sentinel then shows *Disconnected*.
 
+## Local development pairing (HCG Connect not yet issued)
+
+While HCG has not issued Sentinel's HCG Connect client, the server owner can switch HCG Server to local development
+pairing (`hcg-agent link dev-mode on --i-approve-local-development-pairing`). Its invitations then carry
+`"am": "local-development"`.
+
+- Only such an invitation makes Sentinel pair **without** an HCG sign-in (`LocalDevelopmentTokens`: no token is sent).
+  Any other invitation uses HCG Connect exactly as before.
+- The mode is stored in the pairing record (`authMode`), so it survives restarts.
+- Every place that shows the connection says **LOCAL DEVELOPMENT — not an HCG account**: the HCG Server card, the HCG
+  Connect account card, paired device rows the server marks `local-development`, the share sheet, the HCG Server
+  health screen and the Dashboard tile.
+- The owner still approves the device. It reaches that one server only, nothing on HCG services, and the server refuses
+  remote actions.
+- If the server switches authority (local development turned off, or HCG Connect configured), it answers
+  `authority_changed`. Sentinel stops at once, never retries, marks the pairing removed and shows the reason with the
+  pairing form: pair again with a new invitation.
+
+## HCG Server health (read only)
+
+**Connected Devices → HCG Server health → View server health** reads `GET link/diagnostics` when the screen opens
+(and on **Read again**). It shows only what the server returned:
+
+- Server availability, agent version, uptime, start time and authority.
+- TLS: device API description, server key SHA-256 (and whether it matches the key pinned at pairing), gateway running
+  and exposure, gateway CA SHA-256 (compare it before trusting the HCG Server Local CA), certificate expiry.
+- Hosted services with status, health, uptime, restarts and last health check.
+- Security events as plain text (already redacted by the server), failed authentications in the last 24 h, summary.
+
+When Sentinel is not paired, not approved yet, or Remote connections are off, the screen says *Not connected*. When the
+call fails it shows the server's or the transport's real error (for example `permission_not_configured` while no ERP
+key maps `link.diagnostics.read`). Values the server did not send read *Not reported*. The screen runs no action on the
+server and shows no credentials. **Share with paired device** sends it as a redacted `hcg-server.health` report
+(strict redaction, addresses withheld).
+
+Presentation and conversion: `SentinelCore/Sources/SentinelCore/DeviceLink/ServerHealth.swift`; tests:
+`ServerHealthTests.swift`.
+
 ## What is shared
 
 `SentinelReportSharing` (SentinelCore) converts reports to `hcg.diagnostic-report/1`.
